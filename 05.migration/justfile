@@ -1,0 +1,80 @@
+set dotenv-load
+
+# Default: show available commands
+default:
+    @just --list
+
+# Generate a fresh SSH key pair for the migration instance
+generate-ssh-key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    KEY=~/.ssh/migration_key
+    if [ -f "$KEY" ]; then
+        echo "Key already exists: $KEY"
+        echo "Delete it first if you want to regenerate."
+    else
+        ssh-keygen -t ed25519 -f "$KEY" -N "" -C "migration-instance"
+        echo "Generated: $KEY and $KEY.pub"
+    fi
+
+# Run terraform init
+tf-init:
+    cd terraform && terraform init
+
+# Run terraform plan
+tf-plan:
+    cd terraform && terraform plan
+
+# Run terraform apply
+tf-apply:
+    cd terraform && terraform apply
+
+# Run terraform destroy
+tf-destroy:
+    cd terraform && terraform destroy
+
+# Save the instance public IP from terraform output
+save-instance-ip:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    IP=$(cd terraform && terraform output -raw instance_public_ip)
+    if [ -z "$IP" ]; then
+        echo "ERROR: No instance IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    echo "$IP" > ansible/instance_ip.txt
+    echo "Saved instance IP: $IP"
+
+# Generate ansible inventory from the saved IP
+update-inventory: save-instance-ip
+    #!/usr/bin/env bash
+    set -euo pipefail
+    IP=$(cat ansible/instance_ip.txt)
+    cat > ansible/inventory.yml << EOF
+    all:
+      hosts:
+        migration:
+          ansible_host: ${IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/migration_key
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    EOF
+    echo "Generated ansible/inventory.yml"
+    cat ansible/inventory.yml
+
+# Run ansible provisioning playbook
+run-ansible:
+    .venv/bin/ansible-playbook -i ansible/inventory.yml ansible/provision.yml
+
+# SSH into the migration instance
+ssh-instance:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    IP=$(cat ansible/instance_ip.txt)
+    ssh -i ~/.ssh/migration_key \
+        -o StrictHostKeyChecking=no \
+        "ubuntu@${IP}"
+
+# Full setup: generate key, init terraform, apply, update inventory, provision
+setup: generate-ssh-key tf-init tf-apply update-inventory run-ansible
+    @echo "Migration instance is ready. Run 'just ssh-instance' to connect."

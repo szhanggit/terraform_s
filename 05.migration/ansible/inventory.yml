@@ -1,0 +1,7 @@
+all:
+  hosts:
+    migration:
+      ansible_host: 16.52.146.69
+      ansible_user: ubuntu
+      ansible_ssh_private_key_file: ~/.ssh/migration_key
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'

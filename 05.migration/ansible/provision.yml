@@ -1,0 +1,110 @@
+---
+- name: Provision migration EC2 instance
+  hosts: migration
+  become: true
+  vars:
+    docker_gpg_url: https://download.docker.com/linux/ubuntu/gpg
+    docker_repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+
+  tasks:
+    # ---------------------------------------------------------------
+    # System basics
+    # ---------------------------------------------------------------
+    - name: Update apt cache
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - software-properties-common
+          - git
+          - tmux
+          - sqlite3
+          - mysql-client
+          - unzip
+          - jq
+        state: present
+
+    # ---------------------------------------------------------------
+    # Python 3.11
+    # ---------------------------------------------------------------
+    - name: Add deadsnakes PPA
+      apt_repository:
+        repo: ppa:deadsnakes/ppa
+        state: present
+
+    - name: Install Python 3.11
+      apt:
+        name:
+          - python3.11
+          - python3.11-venv
+          - python3.11-distutils
+          - python3-pip
+        state: present
+
+    # ---------------------------------------------------------------
+    # Docker
+    # ---------------------------------------------------------------
+    - name: Add Docker GPG key
+      apt_key:
+        url: "{{ docker_gpg_url }}"
+        state: present
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "{{ docker_repo }}"
+        state: present
+
+    - name: Install Docker CE
+      apt:
+        name: docker-ce
+        state: present
+
+    - name: Install Docker Compose plugin
+      apt:
+        name: docker-compose-plugin
+        state: present
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: true
+
+    # ---------------------------------------------------------------
+    # AWS CLI (for S3 backups of migration.db)
+    # ---------------------------------------------------------------
+    - name: Check if AWS CLI is installed
+      command: aws --version
+      register: aws_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Download AWS CLI v2
+      get_url:
+        url: https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+        dest: /tmp/awscliv2.zip
+      when: aws_check.rc != 0
+
+    - name: Unzip AWS CLI
+      unarchive:
+        src: /tmp/awscliv2.zip
+        dest: /tmp
+        remote_src: true
+      when: aws_check.rc != 0
+
+    - name: Install AWS CLI
+      command: /tmp/aws/install
+      when: aws_check.rc != 0

@@ -1,0 +1,8 @@
+terraform init -backend-config=env/dev/backend.tfvars
+terraform apply -var-file env/dev/dev.tfvars -auto-approve
+
+
+The backend.tf file has empty values because Terraform backends don't support variables. Values are provided via a backend configuration file during initialization.
+This populates the empty fields in backend.tf with values from backend.tfvars. The bucket value is "fortress-power-tf-state-dev" (line 1 of the backend.tfvars file).
+Purpose of components/shared/backend.tf
+Defines the Terraform backend configuration for the shared component. It tells Terraform where to store and retrieve the state file.
