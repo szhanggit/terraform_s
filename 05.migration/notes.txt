@@ -1,0 +1,16 @@
+aws configure --profile stevenz
+
+AWS Access Key ID [None]:
+AWS Secret Access Key [None]:
+Default region name [None]:ca-central-1
+Default output format [None]:json
+
+
+---------------------------------------------------------------------------------
+
+
+
+just setup
+ssh -i ~/.ssh/migration_key ec2-user@57.180.8.143
+ssh -i ~/.ssh/migration_key ubuntu@54.250.26.198
+

@@ -1,0 +1,29 @@
+terraform init
+(sudo apt install awscli)
+aws configure
+AWS Access Key ID [None]:
+AWS Secret Access Key [None]:
+Default region name [None]:ca-central-1
+Default output format [None]:json
+
+
+
+terraform apply -var-file terraform-dev.tfvars -auto-approve
+terraform destroy -var-file terraform-dev.tfvars -auto-approve -target aws_vpc.myapp-vpc
+
+
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+(chmod 400 ~/.ssh/server-key-pair.pem)
+
+(ssh -i ~/.ssh/server-key-pair.pem ec2-user@3.96.144.0)
+
+
+terraform state list
+terraform state show aws_instance.myapp-server
+
+
+ssh ec2-user@18.183.217.150
+
+http://3.96.144.0:8080
+
