@@ -10,6 +10,10 @@
     # ---------------------------------------------------------------
     # System basics
     # ---------------------------------------------------------------
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 2; done
+      changed_when: false
+
     - name: Update apt cache
       command: apt-get update
       changed_when: false
