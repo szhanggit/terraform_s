@@ -1,5 +1,6 @@
 provider "aws" {
-    region = "ca-central-1"
+    region  = "ca-central-1"
+    profile = "stevenz"
 }
 
 resource "aws_vpc" "myapp-vpc" {

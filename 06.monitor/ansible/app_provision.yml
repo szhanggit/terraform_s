@@ -10,6 +10,10 @@
     # ---------------------------------------------------------------
     # System basics
     # ---------------------------------------------------------------
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 2; done
+      changed_when: false
+
     - name: Update apt cache
       command: apt-get update
       changed_when: false
@@ -42,6 +46,34 @@
         state: present
 
     # ---------------------------------------------------------------
+    # Add Group and User
+    # ---------------------------------------------------------------
+    - name: Create prometheus system group
+      group:
+        name: prometheus
+        system: true
+
+    - name: Create prometheus system user
+      user:
+        name: prometheus
+        group: prometheus
+        shell: /sbin/nologin
+        system: true
+        create_home: false
+
+    # ---------------------------------------------------------------
+    # Make folder and set priviledge
+    # ---------------------------------------------------------------
+    - name: Create /var/lib/node directory with ownership and permissions
+      file:
+        path: /var/lib/node
+        state: directory
+        owner: prometheus
+        group: prometheus
+        mode: '0775'
+        recurse: true
+
+    # ---------------------------------------------------------------
     # Add Exporter
     # ---------------------------------------------------------------
     - name: Download node_exporter
@@ -54,23 +86,33 @@
       args:
         chdir: /home/ubuntu
 
-    - name: Copy node_exporter binary to /usr/local/bin
+    # ---------------------------------------------------------------
+    # Set exporter config and start exporter
+    # ---------------------------------------------------------------
+    - name: Move node_exporter binary to /var/lib/node/
       copy:
         src: /home/ubuntu/node_exporter-1.11.1.linux-amd64/node_exporter
-        dest: /usr/local/bin/node_exporter
+        dest: /var/lib/node/node_exporter
         mode: '0755'
         remote_src: true
 
-    - name: Create node_exporter systemd service
+    - name: Create node_exporter.service systemd unit file
       copy:
         dest: /etc/systemd/system/node_exporter.service
         content: |
           [Unit]
-          Description=Node Exporter
-          After=network.target
+          Description=Prometheus Node Exporter
+          Documentation=https://prometheus.io/docs/introduction/overview/
+          Wants=network-online.target
+          After=network-online.target
 
           [Service]
-          ExecStart=/usr/local/bin/node_exporter
+          Type=simple
+          User=prometheus
+          Group=prometheus
+          ExecReload=/bin/kill -HUP $MAINPID
+          ExecStart=/var/lib/node/node_exporter
+          SyslogIdentifier=prometheus_node_exporter
           Restart=always
 
           [Install]

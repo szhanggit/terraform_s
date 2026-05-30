@@ -10,15 +10,27 @@
     # ---------------------------------------------------------------
     # System basics
     # ---------------------------------------------------------------
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 2; done
+      changed_when: false
+
     - name: Update apt cache
       command: apt-get update
       changed_when: false
+      register: apt_update
+      retries: 10
+      delay: 5
+      until: apt_update.rc == 0
 
     - name: Upgrade apt packages
       command: apt-get dist-upgrade -y
       environment:
         DEBIAN_FRONTEND: noninteractive
       changed_when: false
+      register: apt_upgrade
+      retries: 10
+      delay: 5
+      until: apt_upgrade.rc == 0
 
     - name: Update apt cache (module)
       apt:
@@ -32,6 +44,10 @@
     - name: Update apt cache after enabling universe
       command: apt-get update
       changed_when: false
+      register: apt_update_universe
+      retries: 10
+      delay: 5
+      until: apt_update_universe.rc == 0
 
     - name: Install system packages
       apt:
