@@ -12,13 +12,13 @@ terraform validate
 terraform plan -var-file terraform-dev.tfvars
 terraform apply -var-file terraform-dev.tfvars -auto-approve
 terraform destroy -var-file terraform-dev.tfvars -auto-approve
-
+terraform destroy -var-file terraform-dev.tfvars -auto-approve -target aws_instance.grafana
 
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 (chmod 400 ~/.ssh/server-key-pair.pem)
 
-ssh -i ~/.ssh/server-key-pair.pem ubuntu@35.183.130.175
+ssh -i ~/.ssh/server-key-pair.pem ubuntu@15.223.118.45
 ssh -i ~/.ssh/server-key-pair.pem ubuntu@3.96.134.76     (Prometheus)
 
 terraform state list
@@ -29,3 +29,6 @@ terraform state show aws_instance.myapp-server
 
 http://35.183.20.182:8080
 http://3.96.165.208:8080
+
+
+z8DmzgUd78LWmXi

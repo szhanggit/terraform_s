@@ -86,6 +86,35 @@ resource "aws_security_group" "prometheus-sg" {
     }
 }
 
+resource "aws_security_group" "grafana-sg" {
+    vpc_id = aws_vpc.myapp-vpc.id
+
+    ingress {
+        from_port = 22
+        to_port = 22
+        protocol = "tcp"
+        cidr_blocks = [var.my_ip]
+    }
+
+    ingress {
+        from_port = 3000
+        to_port = 3000
+        protocol = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    egress {
+        from_port = 0
+        to_port = 0
+        protocol = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    tags = {
+        Name = "${var.env_prefix}-grafana-sg"
+    }
+}
+
 resource "aws_security_group" "app-server-sg" {
     vpc_id = aws_vpc.myapp-vpc.id
 
@@ -147,6 +176,10 @@ output "app_server_public_ip" {
     value = aws_instance.app-server.public_ip
 }
 
+output "grafana_public_ip" {
+    value = aws_instance.grafana.public_ip
+}
+
 resource "aws_instance" "prometheus" {
     ami = data.aws_ami.latest-ubuntu-image.id
     instance_type = "t3.small"
@@ -182,6 +215,24 @@ resource "aws_instance" "app-server" {
         Name = "App Server"
     }
 }   
+
+resource "aws_instance" "grafana" {
+    ami = data.aws_ami.latest-ubuntu-image.id
+    instance_type = "t3.small"
+
+    subnet_id = aws_subnet.myapp-subnet-1.id
+    vpc_security_group_ids = [aws_security_group.grafana-sg.id]
+    availability_zone = var.avail_zone_1
+
+    associate_public_ip_address = true
+    key_name = aws_key_pair.ssh-key.key_name
+
+    user_data = file("entry-script.sh")
+
+    tags = {
+        Name = "Grafana"
+    }
+}
 
 resource "aws_key_pair" "ssh-key" {
     key_name = "server-key"
