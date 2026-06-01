@@ -191,12 +191,12 @@
     # ---------------------------------------------------------------
     # Modify prometheus config
     # ---------------------------------------------------------------
-    - name: Add application_server scrape job to prometheus.yml
+    - name: Add scrape jobs to prometheus.yml
       blockinfile:
         path: /etc/prometheus/prometheus.yml
         insertafter: EOF
         marker: "  # {mark} ANSIBLE MANAGED BLOCK"
-        block: "  - job_name: 'application_server'\n    static_configs:\n      - targets: ['{{ lookup(\"file\", \"app_ip.txt\") | trim }}:9100']"
+        block: "  - job_name: 'application_server'\n    static_configs:\n      - targets: ['{{ lookup(\"file\", \"app_ip.txt\") | trim }}:9100']\n  - job_name: 'shoehub'\n    static_configs:\n      - targets: ['{{ lookup(\"file\", \"app_ip.txt\") | trim }}:8020']"
 
     # ---------------------------------------------------------------
     # Start prometheus

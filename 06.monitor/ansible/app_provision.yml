@@ -4,7 +4,7 @@
   become: true
   vars:
     docker_gpg_url: https://download.docker.com/linux/ubuntu/gpg
-    docker_repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    docker_repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
 
   tasks:
     # ---------------------------------------------------------------
@@ -124,3 +124,92 @@
         state: started
         enabled: true
         daemon_reload: true
+
+    # ---------------------------------------------------------------
+    # Docker
+    # ---------------------------------------------------------------
+    - name: Create /etc/apt/keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Docker GPG key
+      get_url:
+        url: "{{ docker_gpg_url }}"
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "{{ docker_repo }}"
+        state: present
+
+    - name: Install Docker CE
+      apt:
+        name: docker-ce
+        state: present
+
+    - name: Install Docker Compose plugin
+      apt:
+        name: docker-compose-plugin
+        state: present
+
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: true
+
+    # ---------------------------------------------------------------
+    # .NET 10 ASP.NET Core Runtime
+    # ---------------------------------------------------------------
+    - name: Download dotnet-install script
+      get_url:
+        url: https://dot.net/v1/dotnet-install.sh
+        dest: /tmp/dotnet-install.sh
+        mode: '0755'
+
+    - name: Install ASP.NET Core Runtime 10
+      shell: /tmp/dotnet-install.sh --channel 10.0 --runtime aspnetcore --install-dir /usr/share/dotnet
+      args:
+        creates: /usr/share/dotnet/dotnet
+
+    - name: Create dotnet symlink in PATH
+      file:
+        src: /usr/share/dotnet/dotnet
+        dest: /usr/local/bin/dotnet
+        state: link
+
+
+    # ---------------------------------------------------------------
+    # Install and run ShoeHub
+    # ---------------------------------------------------------------
+    - name: Clone ShoeHub repository
+      git:
+        repo: https://github.com/aussiearef/shoehubv2
+        dest: /home/ubuntu/shoehubv2
+        version: HEAD
+
+    - name: Build ShoeHub Docker image
+      command: docker build -t shoehub .
+      args:
+        chdir: /home/ubuntu/shoehubv2/ShoeHubV2
+
+    - name: List Docker images
+      command: docker image ls
+      changed_when: false
+      register: docker_images
+
+    - name: Show Docker images
+      debug:
+        var: docker_images.stdout_lines
+
+    - name: Run ShoeHub container
+      command: docker run -d -p 8020:8080 --name shoehub shoehub

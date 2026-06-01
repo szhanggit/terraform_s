@@ -11,13 +11,17 @@ Default output format [None]:json
 
 
 just setup
-ssh -i ~/.ssh/id_ed25519 ubuntu@3.96.137.13
-ssh -i ~/.ssh/id_ed25519 ubuntu@35.183.239.49
+ssh -i ~/.ssh/id_ed25519 ubuntu@35.183.30.66
+ssh -i ~/.ssh/id_ed25519 ubuntu@16.54.254.48
 
 http://3.96.155.164:8080
 http://15.223.185.164:8080
 
-http://99.79.127.48:9090/targets
-http://35.183.130.175:9100
+http://3.96.196.4:9090/targets
+http://35.183.30.66:9100
 http://15.222.255.214:3000
 
+Check if docker is running:
+sudo systemctl status docker
+docker run hello-world
+dotnet --list-runtimes
