@@ -19,7 +19,8 @@ http://15.223.185.164:8080
 
 http://3.96.196.4:9090/targets
 http://35.183.30.66:9100
-http://15.222.255.214:3000
+http://3.99.180.202:3000
+curl http://35.183.30.66:8020/metrics
 
 Check if docker is running:
 sudo systemctl status docker
