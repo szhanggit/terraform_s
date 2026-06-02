@@ -89,3 +89,37 @@
     - name: Start grafana-server
       command: systemctl start grafana-server
       changed_when: false
+
+    # ---------------------------------------------------------------
+    # Setup Datasource
+    # ---------------------------------------------------------------
+    - name: Read Prometheus app IP
+      set_fact:
+        prometheus_ip: "{{ lookup('file', 'prometheus_ip.txt') | trim }}"
+
+    - name: Ensure Grafana provisioning datasources directory exists
+      file:
+        path: /etc/grafana/provisioning/datasources
+        state: directory
+        owner: grafana
+        group: grafana
+        mode: '0755'
+
+    - name: Provision Prometheus datasource
+      copy:
+        dest: /etc/grafana/provisioning/datasources/prometheus.yml
+        owner: grafana
+        group: grafana
+        mode: '0644'
+        content: |
+          apiVersion: 1
+          datasources:
+            - name: Prometheus
+              type: prometheus
+              access: proxy
+              url: http://{{ prometheus_ip }}:9090/
+              isDefault: true
+
+    - name: Restart grafana-server to apply datasource
+      command: systemctl restart grafana-server
+      changed_when: true

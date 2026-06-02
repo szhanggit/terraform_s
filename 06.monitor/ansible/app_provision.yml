@@ -149,14 +149,14 @@
         repo: "{{ docker_repo }}"
         state: present
 
-    - name: Install Docker CE
+    - name: Install Docker packages
       apt:
-        name: docker-ce
-        state: present
-
-    - name: Install Docker Compose plugin
-      apt:
-        name: docker-compose-plugin
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
         state: present
 
     - name: Enable docker service
