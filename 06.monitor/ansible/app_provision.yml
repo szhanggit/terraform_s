@@ -23,6 +23,10 @@
       environment:
         DEBIAN_FRONTEND: noninteractive
       changed_when: false
+      register: apt_upgrade
+      retries: 10
+      delay: 5
+      until: apt_upgrade.rc == 0
 
     - name: Update apt cache (module)
       apt:
@@ -155,11 +159,19 @@
         name: docker-compose-plugin
         state: present
 
-    - name: Start and enable Docker
-      systemd:
-        name: docker
-        state: started
-        enabled: true
+    - name: Enable docker service
+      command: systemctl enable docker
+      changed_when: false
+
+    - name: Start docker service
+      command: systemctl start docker
+      changed_when: false
+
+    - name: Wait for Docker socket to be ready
+      wait_for:
+        path: /var/run/docker.sock
+        state: present
+        timeout: 30
 
     - name: Add ubuntu user to docker group
       user:

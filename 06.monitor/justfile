@@ -90,9 +90,9 @@ update-inventory: save-instance-ip
 
 # Run ansible provisioning playbook
 run-ansible:    
-    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/app_provision.yml
-    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/grafana_provision.yml
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/app_provision.yml    
     ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/prometheus_provision.yml
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/grafana_provision.yml
 
 # SSH into the migration instance
 ssh-instance:
