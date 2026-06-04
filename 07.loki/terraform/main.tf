@@ -57,7 +57,7 @@ resource "aws_route_table_association" "rtb-subnet-2" {
     route_table_id = aws_route_table.main-rtb.id
 }
 
-resource "aws_security_group" "prometheus-sg" {
+resource "aws_security_group" "web-server-sg" {
     vpc_id = aws_vpc.myapp-vpc.id
 
     ingress {
@@ -68,8 +68,15 @@ resource "aws_security_group" "prometheus-sg" {
     }
 
     ingress {
-        from_port = 9090
-        to_port = 9090
+        from_port = 80
+        to_port = 80
+        protocol = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    ingress {
+        from_port = 8080
+        to_port = 8080
         protocol = "tcp"
         cidr_blocks = ["0.0.0.0/0"]
     }
@@ -82,7 +89,36 @@ resource "aws_security_group" "prometheus-sg" {
     }
 
     tags = {
-        Name = "${var.env_prefix}-prometheus-sg"
+        Name = "${var.env_prefix}-web-server-sg"
+    }
+}
+
+resource "aws_security_group" "loki-sg" {
+    vpc_id = aws_vpc.myapp-vpc.id
+
+    ingress {
+        from_port = 22
+        to_port = 22
+        protocol = "tcp"
+        cidr_blocks = [var.my_ip]
+    }
+
+    ingress {
+        from_port = 3100
+        to_port = 3100
+        protocol = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    egress {
+        from_port = 0
+        to_port = 0
+        protocol = "-1"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+
+    tags = {
+        Name = "${var.env_prefix}-loki-sg"
     }
 }
 
@@ -115,49 +151,6 @@ resource "aws_security_group" "grafana-sg" {
     }
 }
 
-resource "aws_security_group" "app-server-sg" {
-    vpc_id = aws_vpc.myapp-vpc.id
-
-    ingress {
-        from_port = 22
-        to_port = 22
-        protocol = "tcp"
-        cidr_blocks = [var.my_ip]
-    }
-
-    ingress {
-        from_port = 8080
-        to_port = 8080
-        protocol = "tcp"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
-
-    ingress {
-        from_port = 9100
-        to_port = 9100
-        protocol = "tcp"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
-
-    ingress {
-        from_port = 8020
-        to_port = 8020
-        protocol = "tcp"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
-
-    egress {
-        from_port = 0
-        to_port = 0
-        protocol = "-1"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
-
-    tags = {
-        Name = "${var.env_prefix}-app-server-sg"
-    }
-}   
-
 data "aws_ami" "latest-ubuntu-image" {
     most_recent = true
     owners = ["099720109477"]
@@ -175,24 +168,24 @@ output "aws_ami_id" {
     value = data.aws_ami.latest-ubuntu-image.id
 }
 
-output "prometheus_public_ip" {
-    value = aws_instance.prometheus.public_ip
+output "web_server_public_ip" {
+    value = aws_instance.web-server.public_ip
 }
 
-output "app_server_public_ip" {
-    value = aws_instance.app-server.public_ip
+output "loki_public_ip" {
+    value = aws_instance.loki.public_ip
 }
 
 output "grafana_public_ip" {
     value = aws_instance.grafana.public_ip
 }
 
-resource "aws_instance" "prometheus" {
+resource "aws_instance" "web-server" {
     ami = data.aws_ami.latest-ubuntu-image.id
     instance_type = "t3.small"
 
     subnet_id = aws_subnet.myapp-subnet-1.id
-    vpc_security_group_ids = [aws_security_group.prometheus-sg.id]
+    vpc_security_group_ids = [aws_security_group.web-server-sg.id]
     availability_zone = var.avail_zone_1
 
     associate_public_ip_address = true
@@ -201,16 +194,16 @@ resource "aws_instance" "prometheus" {
     user_data = file("entry-script.sh")
 
     tags = {
-        Name = "Prometheus"
+        Name = "Web Server"
     }
 }
 
-resource "aws_instance" "app-server" {
+resource "aws_instance" "loki" {
     ami = data.aws_ami.latest-ubuntu-image.id
     instance_type = "t3.small"
 
     subnet_id = aws_subnet.myapp-subnet-2.id
-    vpc_security_group_ids = [aws_security_group.app-server-sg.id]
+    vpc_security_group_ids = [aws_security_group.loki-sg.id]
     availability_zone = var.avail_zone_2
 
     associate_public_ip_address = true
@@ -219,9 +212,9 @@ resource "aws_instance" "app-server" {
     user_data = file("entry-script.sh")
 
     tags = {
-        Name = "App Server"
+        Name = "Loki Server"
     }
-}   
+}
 
 resource "aws_instance" "grafana" {
     ami = data.aws_ami.latest-ubuntu-image.id
@@ -237,7 +230,7 @@ resource "aws_instance" "grafana" {
     user_data = file("entry-script.sh")
 
     tags = {
-        Name = "Grafana"
+        Name = "Grafana Server"
     }
 }
 

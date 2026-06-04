@@ -1,17 +1,17 @@
 all:
   hosts:
-    prometheus:
-      ansible_host: 3.96.141.176
+    web:
+      ansible_host: 3.96.158.176
       ansible_user: ubuntu
       ansible_ssh_private_key_file: ~/.ssh/id_ed25519
       ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
-    app:
-      ansible_host: 16.54.231.208
+    loki:
+      ansible_host: 99.79.37.23
       ansible_user: ubuntu
       ansible_ssh_private_key_file: ~/.ssh/id_ed25519
       ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
     grafana:
-      ansible_host: 15.222.255.214
+      ansible_host: 15.223.183.204
       ansible_user: ubuntu
       ansible_ssh_private_key_file: ~/.ssh/id_ed25519
       ansible_ssh_common_args: '-o StrictHostKeyChecking=no'

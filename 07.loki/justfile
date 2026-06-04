@@ -37,45 +37,45 @@ tf-destroy:
 save-instance-ip:
     #!/usr/bin/env bash
     set -euo pipefail
-    prometheus_IP=$(cd terraform && terraform output -raw prometheus_public_ip)
-    app_IP=$(cd terraform && terraform output -raw app_server_public_ip)
+    web_IP=$(cd terraform && terraform output -raw web_server_public_ip)
+    loki_IP=$(cd terraform && terraform output -raw loki_public_ip)
     grafana_IP=$(cd terraform && terraform output -raw grafana_public_ip)
-    if [ -z "$prometheus_IP" ]; then
-        echo "ERROR: No prometheus IP found. Did you run 'just tf-apply'?"
+    if [ -z "$web_IP" ]; then
+        echo "ERROR: No web server IP found. Did you run 'just tf-apply'?"
         exit 1
     fi
-    if [ -z "$app_IP" ]; then
-        echo "ERROR: No app IP found. Did you run 'just tf-apply'?"
+    if [ -z "$loki_IP" ]; then
+        echo "ERROR: No loki IP found. Did you run 'just tf-apply'?"
         exit 1
     fi
     if [ -z "$grafana_IP" ]; then
         echo "ERROR: No grafana IP found. Did you run 'just tf-apply'?"
         exit 1
     fi
-    echo "$prometheus_IP" > ansible/prometheus_ip.txt
-    echo "$app_IP" > ansible/app_ip.txt
+    echo "$web_IP" > ansible/web_ip.txt
+    echo "$loki_IP" > ansible/loki_ip.txt
     echo "$grafana_IP" > ansible/grafana_ip.txt
-    echo "Saved prometheus IP: $prometheus_IP"
-    echo "Saved app IP: $app_IP"
+    echo "Saved web server IP: $web_IP"
+    echo "Saved loki IP: $loki_IP"
     echo "Saved grafana IP: $grafana_IP"
 
 # Generate ansible inventory from the saved IP
 update-inventory: save-instance-ip
     #!/usr/bin/env bash
     set -euo pipefail
-    prometheus_IP=$(cat ansible/prometheus_ip.txt)
-    app_IP=$(cat ansible/app_ip.txt)
+    web_IP=$(cat ansible/web_ip.txt)
+    loki_IP=$(cat ansible/loki_ip.txt)
     grafana_IP=$(cat ansible/grafana_ip.txt)
     cat > ansible/inventory.yml << EOF
     all:
       hosts:
-        prometheus:
-          ansible_host: ${prometheus_IP}
+        web:
+          ansible_host: ${web_IP}
           ansible_user: ubuntu
           ansible_ssh_private_key_file: ~/.ssh/id_ed25519
           ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
-        app:
-          ansible_host: ${app_IP}
+        loki:
+          ansible_host: ${loki_IP}
           ansible_user: ubuntu
           ansible_ssh_private_key_file: ~/.ssh/id_ed25519
           ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
@@ -89,28 +89,28 @@ update-inventory: save-instance-ip
     cat ansible/inventory.yml
 
 # Run ansible provisioning playbook
-run-ansible:    
-    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/app_provision.yml    
-    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/prometheus_provision.yml
+run-ansible:
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/web_provision.yml
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/loki_provision.yml
     ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/grafana_provision.yml
 
-# SSH into the migration instance
+# SSH into the instances
 ssh-instance:
     #!/usr/bin/env bash
     set -euo pipefail
-    prometheus_IP=$(cat ansible/prometheus_ip.txt)
-    app_IP=$(cat ansible/app_ip.txt)
+    web_IP=$(cat ansible/web_ip.txt)
+    loki_IP=$(cat ansible/loki_ip.txt)
     grafana_IP=$(cat ansible/grafana_ip.txt)
     ssh -i ~/.ssh/id_ed25519 \
         -o StrictHostKeyChecking=no \
-        "ubuntu@${prometheus_IP}"
+        "ubuntu@${web_IP}"
     ssh -i ~/.ssh/id_ed25519 \
         -o StrictHostKeyChecking=no \
-        "ubuntu@${app_IP}"        
+        "ubuntu@${loki_IP}"
     ssh -i ~/.ssh/id_ed25519 \
         -o StrictHostKeyChecking=no \
-        "ubuntu@${grafana_IP}"          
+        "ubuntu@${grafana_IP}"
 
 # Full setup: generate key, init terraform, apply, update inventory, provision
 setup: tf-init tf-apply update-inventory run-ansible
-    @echo "Migration instance is ready. Run 'just ssh-instance' to connect."
+    @echo "Loki stack is ready. Run 'just ssh-instance' to connect."
