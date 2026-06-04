@@ -3,6 +3,13 @@ curl http://99.79.37.23:3100/ready
 
 
 
+
+
+
 ssh -i ~/.ssh/id_ed25519 ubuntu@15.223.183.204  grafana
-ssh -i ~/.ssh/id_ed25519 ubuntu@99.79.37.23     loki
-ssh -i ~/.ssh/id_ed25519 ubuntu@3.96.158.176    webserver
+ssh -i ~/.ssh/id_ed25519 ubuntu@3.99.220.163     loki
+ssh -i ~/.ssh/id_ed25519 ubuntu@99.79.48.148    webserver
+
+
+http://3.96.194.112:3000    grafana
+z8DmzgUd78LWmXi

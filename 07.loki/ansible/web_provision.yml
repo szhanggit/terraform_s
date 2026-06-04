@@ -105,3 +105,33 @@
                     job: shoehub
                     app: shoehub
                     __path__: /var/log/shoehub/log*
+
+    # ---------------------------------------------------------------
+    # Setup Promtail systemd service
+    # ---------------------------------------------------------------
+    - name: Create promtail.service
+      copy:
+        dest: /etc/systemd/system/promtail.service
+        content: |
+          [Unit]
+          Description=Loki Promtail
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/local/bin/promtail -config.file=/etc/promtail/config.yml
+          Restart=always
+
+          [Install]
+          WantedBy=default.target
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      changed_when: false
+
+    - name: Start promtail service
+      command: systemctl start promtail.service
+      changed_when: false
+
+    - name: Enable promtail service
+      command: systemctl enable promtail.service
+      changed_when: false
