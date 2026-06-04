@@ -1,0 +1,8 @@
+systemctl status loki
+curl http://99.79.37.23:3100/ready
+
+
+
+ssh -i ~/.ssh/id_ed25519 ubuntu@15.223.183.204  grafana
+ssh -i ~/.ssh/id_ed25519 ubuntu@99.79.37.23     loki
+ssh -i ~/.ssh/id_ed25519 ubuntu@3.96.158.176    webserver

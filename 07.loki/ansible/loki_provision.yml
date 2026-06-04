@@ -1,0 +1,80 @@
+---
+- name: Provision loki EC2 instance
+  hosts: loki
+  become: true
+  vars:
+    docker_gpg_url: https://download.docker.com/linux/ubuntu/gpg
+    docker_repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+
+  tasks:
+    # ---------------------------------------------------------------
+    # System basics
+    # ---------------------------------------------------------------
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 2; done
+      changed_when: false
+
+    - name: Update apt cache
+      command: apt-get update
+      changed_when: false
+      register: apt_update
+      retries: 10
+      delay: 5
+      until: apt_update.rc == 0
+
+    - name: Upgrade apt packages
+      command: apt-get dist-upgrade -y
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+      register: apt_upgrade
+      retries: 10
+      delay: 5
+      until: apt_upgrade.rc == 0
+
+    - name: Update apt cache (module)
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Enable universe repository
+      command: add-apt-repository universe -y
+      changed_when: false
+
+    - name: Update apt cache after enabling universe
+      command: apt-get update
+      changed_when: false
+      register: apt_update_universe
+      retries: 10
+      delay: 5
+      until: apt_update_universe.rc == 0
+
+    - name: Install system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - software-properties-common
+          - git
+          - tmux
+          - sqlite3
+          - mysql-client
+          - unzip
+          - jq
+        state: present
+
+    # ---------------------------------------------------------------
+    # Install wget
+    # ---------------------------------------------------------------
+    - name: Install wget
+      command: apt-get install wget -y
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Install loki
+    # ---------------------------------------------------------------
+    - name: Install loki
+      command: apt-get install loki -y
+      changed_when: false
