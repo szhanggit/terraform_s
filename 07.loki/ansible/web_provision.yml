@@ -51,6 +51,36 @@
         state: present
 
     # ---------------------------------------------------------------
+    # Python 3.11
+    # ---------------------------------------------------------------
+    - name: Add deadsnakes PPA
+      apt_repository:
+        repo: ppa:deadsnakes/ppa
+        state: present
+
+    - name: Install Python 3.11
+      apt:
+        name:
+          - python3.11
+          - python3.11-venv
+          - python3.11-distutils
+          - python3-pip
+        state: present
+
+    # ---------------------------------------------------------------
+    # Load App
+    # ---------------------------------------------------------------
+    - name: Copy log-gen.py to web server
+      copy:
+        src: ../log-gen.py
+        dest: /home/ubuntu/log-gen.py
+        mode: '0755'
+
+    - name: Run log-gen.py
+      command: python3 /home/ubuntu/log-gen.py
+      changed_when: false
+
+    # ---------------------------------------------------------------
     # Install Promtail
     # ---------------------------------------------------------------
     - name: Download Promtail
@@ -97,6 +127,18 @@
                   labels:
                     job: varlogs
                     __path__: /var/log/*log
+                    team: DevOps
+                    env: Prod
+                    component:
+                    level:
+              pipeline_stages:
+                - logfmt:
+                    mapping:
+                      component:
+                      level:
+                - labels:
+                    component:
+                    level:
             - job_name: shoehub
               static_configs:
                 - targets:
