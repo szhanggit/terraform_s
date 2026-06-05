@@ -1,0 +1,179 @@
+---
+- name: Provision web server EC2 instance
+  hosts: web
+  become: true
+  vars:
+    docker_gpg_url: https://download.docker.com/linux/ubuntu/gpg
+    docker_repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    loki_ip: "{{ lookup('file', 'loki_ip.txt') }}"
+
+  tasks:
+    # ---------------------------------------------------------------
+    # System basics
+    # ---------------------------------------------------------------
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 2; done
+      changed_when: false
+
+    - name: Update apt cache
+      command: apt-get update
+      changed_when: false
+
+    - name: Upgrade apt packages
+      command: apt-get dist-upgrade -y
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+      register: apt_upgrade
+      retries: 10
+      delay: 5
+      until: apt_upgrade.rc == 0
+
+    - name: Update apt cache (module)
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - software-properties-common
+          - git
+          - tmux
+          - sqlite3
+          - mysql-client
+          - unzip
+          - jq
+        state: present
+
+    # ---------------------------------------------------------------
+    # Python 3.11
+    # ---------------------------------------------------------------
+    - name: Add deadsnakes PPA
+      apt_repository:
+        repo: ppa:deadsnakes/ppa
+        state: present
+
+    - name: Install Python 3.11
+      apt:
+        name:
+          - python3.11
+          - python3.11-venv
+          - python3.11-distutils
+          - python3-pip
+        state: present
+
+    # ---------------------------------------------------------------
+    # Load App
+    # ---------------------------------------------------------------
+    - name: Copy log-gen.py to web server
+      copy:
+        src: ../log-gen.py
+        dest: /home/ubuntu/log-gen.py
+        mode: '0755'
+
+    - name: Run log-gen.py
+      command: python3 /home/ubuntu/log-gen.py
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Install Promtail
+    # ---------------------------------------------------------------
+    - name: Download Promtail
+      command: wget https://github.com/grafana/loki/releases/download/v3.6.11/promtail-linux-amd64.zip -P /home/ubuntu
+      changed_when: false
+
+    - name: Unzip Promtail
+      command: unzip /home/ubuntu/promtail-linux-amd64.zip -d /home/ubuntu
+      changed_when: false
+
+    - name: Move Promtail to /usr/local/bin
+      command: mv /home/ubuntu/promtail-linux-amd64 /usr/local/bin/promtail
+      changed_when: false
+
+    - name: Make Promtail executable
+      command: chmod +x /usr/local/bin/promtail
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Configure Promtail
+    # ---------------------------------------------------------------
+    - name: Create /etc/promtail directory
+      file:
+        path: /etc/promtail
+        state: directory
+        mode: '0755'
+
+    - name: Create Promtail config
+      copy:
+        dest: /etc/promtail/config.yml
+        content: |
+          server:
+            http_listen_port: 9080
+            grpc_listen_port: 0
+          positions:
+            filename: /tmp/positions.yaml
+          clients:
+            - url: http://{{ loki_ip }}:3100/loki/api/v1/push
+          scrape_configs:
+            - job_name: system
+              static_configs:
+                - targets:
+                    - localhost
+                  labels:
+                    job: varlogs
+                    __path__: /var/log/*log
+                    team: DevOps
+                    env: Prod
+                    component:
+                    level:
+              pipeline_stages:
+                - logfmt:
+                    mapping:
+                      component:
+                      level:
+                - labels:
+                    component:
+                    level:
+            - job_name: shoehub
+              static_configs:
+                - targets:
+                    - localhost
+                  labels:
+                    job: shoehub
+                    app: shoehub
+                    __path__: /var/log/shoehub/log*
+
+    # ---------------------------------------------------------------
+    # Setup Promtail systemd service
+    # ---------------------------------------------------------------
+    - name: Create promtail.service
+      copy:
+        dest: /etc/systemd/system/promtail.service
+        content: |
+          [Unit]
+          Description=Loki Promtail
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/local/bin/promtail -config.file=/etc/promtail/config.yml
+          Restart=always
+
+          [Install]
+          WantedBy=default.target
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      changed_when: false
+
+    - name: Start promtail service
+      command: systemctl start promtail.service
+      changed_when: false
+
+    - name: Enable promtail service
+      command: systemctl enable promtail.service
+      changed_when: false

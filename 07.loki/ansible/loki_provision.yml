@@ -1,0 +1,204 @@
+---
+- name: Provision loki EC2 instance
+  hosts: loki
+  become: true
+  vars:
+    docker_gpg_url: https://download.docker.com/linux/ubuntu/gpg
+    docker_repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+
+  tasks:
+    # ---------------------------------------------------------------
+    # System basics
+    # ---------------------------------------------------------------
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 2; done
+      changed_when: false
+
+    - name: Update apt cache
+      command: apt-get update
+      changed_when: false
+      register: apt_update
+      retries: 10
+      delay: 5
+      until: apt_update.rc == 0
+
+    - name: Upgrade apt packages
+      command: apt-get dist-upgrade -y
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+      register: apt_upgrade
+      retries: 10
+      delay: 5
+      until: apt_upgrade.rc == 0
+
+    - name: Update apt cache (module)
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Enable universe repository
+      command: add-apt-repository universe -y
+      changed_when: false
+
+    - name: Update apt cache after enabling universe
+      command: apt-get update
+      changed_when: false
+      register: apt_update_universe
+      retries: 10
+      delay: 5
+      until: apt_update_universe.rc == 0
+
+    - name: Install system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - software-properties-common
+          - git
+          - tmux
+          - sqlite3
+          - mysql-client
+          - unzip
+          - jq
+        state: present
+
+    # ---------------------------------------------------------------
+    # Install wget
+    # ---------------------------------------------------------------
+    - name: Install wget
+      command: apt-get install wget -y
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Install loki
+    # ---------------------------------------------------------------
+    - name: Create /etc/apt/keyrings directory
+      command: mkdir -p /etc/apt/keyrings
+      changed_when: false
+
+    - name: Download Grafana GPG key
+      command: wget -qO /etc/apt/keyrings/grafana.asc https://apt.grafana.com/gpg-full.key
+      changed_when: false
+
+    - name: Add Grafana apt repository
+      shell: echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main" | tee /etc/apt/sources.list.d/grafana.list
+      changed_when: false
+
+    - name: Update apt cache after adding Grafana repository
+      command: apt-get update
+      changed_when: false
+
+    - name: Install loki
+      command: apt-get install loki -y
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Make directory
+    # ---------------------------------------------------------------
+    - name: Create loki group
+      group:
+        name: loki
+        system: true
+        state: present
+
+    - name: Create loki user
+      user:
+        name: loki
+        group: loki
+        system: true
+        shell: /bin/false
+        create_home: false
+        state: present
+
+    - name: Create /var/lib/loki directory
+      command: mkdir -p /var/lib/loki
+      changed_when: false
+
+    - name: Set ownership of /var/lib/loki
+      command: chown -R loki:loki /var/lib/loki
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Config loki
+    # ---------------------------------------------------------------
+    - name: Create /etc/loki/config.yml
+      copy:
+        dest: /etc/loki/config.yml
+        content: |
+          auth_enabled: false
+
+          server:
+            http_listen_port: 3100
+            grpc_listen_port: 9096
+            log_level: info
+            grpc_server_max_concurrent_streams: 1000
+
+          common:
+            instance_addr: 0.0.0.0
+            path_prefix: /var/lib/loki
+            storage:
+              filesystem:
+                chunks_directory: /var/lib/loki/chunks
+                rules_directory: /var/lib/loki/rules
+            replication_factor: 1
+            ring:
+              kvstore:
+                store: memberlist
+
+          query_range:
+            results_cache:
+              cache:
+                embedded_cache:
+                  enabled: true
+                  max_size_mb: 100
+
+          limits_config:
+            metric_aggregation_enabled: true
+            enable_multi_variant_queries: true
+            ingestion_rate_mb: 10
+            ingestion_burst_size_mb: 20
+            max_global_streams_per_user: 10000
+            max_query_length: 721h
+            max_query_parallelism: 32
+
+          schema_config:
+            configs:
+              - from: 2020-10-24
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index:
+                  prefix: index_
+                  period: 24h
+
+          pattern_ingester:
+            enabled: true
+            metric_aggregation:
+              loki_address: localhost:3100
+
+          ruler:
+            alertmanager_url: http://localhost:9093
+
+          frontend:
+            encoding: protobuf
+
+          analytics:
+            reporting_enabled: false
+
+    # ---------------------------------------------------------------
+    # Start loki
+    # ---------------------------------------------------------------
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      changed_when: false
+
+    - name: Enable loki
+      command: systemctl enable loki
+      changed_when: false
+
+    - name: Start loki
+      command: systemctl start loki
+      changed_when: false
