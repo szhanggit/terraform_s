@@ -1,0 +1,59 @@
+Mow http://15.223.216.245:12345/ can be open successfully.
+  There are eight items on the page:
+  loki.write.loki
+  local.file_match.system_logs
+  loki.source.file.system_log_source
+  local.file_match.app_logs
+  loki.source.file.app_log_source
+  prometheus.remote_write.prom
+  prometheus.exporter.unix.node_metrics
+  prometheus.scrape.node_scrape
+  Explain each of them.
+
+These eight components form two parallel pipelines — one for metrics and one for logs.
+
+---
+Metrics pipeline (→ Prometheus)
+
+prometheus.exporter.unix.node_metrics
+Collects OS-level metrics from the host (CPU, memory, disk, network, etc.) — the built-in equivalent of node_exporter.
+
+prometheus.scrape.node_scrape
+Scrapes the targets from node_metrics on a regular interval and passes the samples downstream to prometheus.remote_write.prom.
+
+prometheus.remote_write.prom
+Receives all scraped metric samples and pushes them to Prometheus via the remote write API at http://<prometheus_ip>:9090/api/v1/write.
+
+---
+Logs pipeline (→ Loki)
+
+local.file_match.app_logs
+Watches /var/log/loki_udemy.log — the Python app's log file. Produces a target with labels job=python_app, app=python_app, host=python-app.
+
+loki.source.file.app_log_source
+Tails the file targets from app_logs, reads new log lines as they are written, and forwards them to loki.write.loki.
+
+local.file_match.system_logs
+Watches /var/log/*log — all system logs (syslog, auth.log, kern.log, etc.). Labels them job=varlogs, team=DevOps, env=Prod, host=python-app.
+
+loki.source.file.system_log_source
+Tails the file targets from system_logs and forwards new lines to loki.write.loki.
+
+loki.write.loki
+The sink for all logs. Receives log streams from both source components and pushes them to Loki at http://<loki_ip>:3100/loki/api/v1/push.
+
+---
+Data flow summary:
+node_metrics ──► node_scrape ──► remote_write.prom ──► Prometheus
+
+app_logs ──► app_log_source ──┐
+                               ├──► loki.write.loki ──► Loki
+system_logs ──► sys_log_source─┘
+
+
+
+
+
+
+
+

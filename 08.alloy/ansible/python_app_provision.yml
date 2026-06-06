@@ -1,0 +1,211 @@
+---
+- name: Provision python app EC2 instance
+  hosts: python_app
+  become: true
+  vars:
+    prometheus_ip: "{{ lookup('file', 'prometheus_ip.txt') | trim }}"
+    loki_ip: "{{ lookup('file', 'loki_ip.txt') | trim }}"
+
+  tasks:
+    # ---------------------------------------------------------------
+    # System basics
+    # ---------------------------------------------------------------
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 2; done
+      changed_when: false
+
+    - name: Update apt cache
+      command: apt-get update
+      changed_when: false
+
+    - name: Upgrade apt packages
+      command: apt-get dist-upgrade -y
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+      register: apt_upgrade
+      retries: 10
+      delay: 5
+      until: apt_upgrade.rc == 0
+
+    - name: Update apt cache (module)
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - software-properties-common
+          - git
+          - tmux
+          - sqlite3
+          - mysql-client
+          - unzip
+          - jq
+        state: present
+
+    # ---------------------------------------------------------------
+    # Python 3.11
+    # ---------------------------------------------------------------
+    - name: Add deadsnakes PPA
+      apt_repository:
+        repo: ppa:deadsnakes/ppa
+        state: present
+
+    - name: Install Python 3.11
+      apt:
+        name:
+          - python3.11
+          - python3.11-venv
+          - python3.11-distutils
+          - python3-pip
+        state: present
+
+    # ---------------------------------------------------------------
+    # Generate application logs
+    # ---------------------------------------------------------------
+    - name: Copy log-gen.py to python app server
+      copy:
+        src: ../log-gen.py
+        dest: /home/ubuntu/log-gen.py
+        mode: '0755'
+
+    - name: Run log-gen.py to generate sample logs
+      command: python3 /home/ubuntu/log-gen.py
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Install Grafana Alloy
+    # ---------------------------------------------------------------
+    - name: Create /etc/apt/keyrings directory
+      command: mkdir -p /etc/apt/keyrings
+      changed_when: false
+
+    - name: Download Grafana GPG key
+      command: wget -qO /etc/apt/keyrings/grafana.asc https://apt.grafana.com/gpg-full.key
+      changed_when: false
+
+    - name: Add Grafana apt repository
+      shell: echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main" | tee /etc/apt/sources.list.d/grafana.list
+      changed_when: false
+
+    - name: Update apt cache after adding Grafana repository
+      command: apt-get update
+      changed_when: false
+
+    - name: Install Grafana Alloy
+      command: apt-get install alloy -y
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Configure Grafana Alloy
+    # Collects node metrics → Prometheus
+    # Collects Python app logs and system logs → Loki
+    # ---------------------------------------------------------------
+    - name: Create Alloy config directory
+      file:
+        path: /etc/alloy
+        state: directory
+        mode: '0755'
+
+    - name: Create Alloy config
+      copy:
+        dest: /etc/alloy/config.alloy
+        content: |
+          // ===========================================================
+          // Node metrics (replaces node_exporter)
+          // ===========================================================
+          prometheus.exporter.unix "node_metrics" { }
+
+          prometheus.scrape "node_scrape" {
+            targets    = prometheus.exporter.unix.node_metrics.targets
+            forward_to = [prometheus.remote_write.prom.receiver]
+            job_name   = "node"
+          }
+
+          // ===========================================================
+          // Forward metrics to Prometheus via remote write
+          // ===========================================================
+          prometheus.remote_write "prom" {
+            endpoint {
+              url = "http://{{ prometheus_ip }}:9090/api/v1/write"
+            }
+          }
+
+          // ===========================================================
+          // Collect Python application logs
+          // ===========================================================
+          local.file_match "app_logs" {
+            path_targets = [{
+              "__path__" = "/var/log/loki_udemy.log",
+              "job"      = "python_app",
+              "app"      = "python_app",
+              "host"     = "python-app",
+            }]
+          }
+
+          loki.source.file "app_log_source" {
+            targets    = local.file_match.app_logs.targets
+            forward_to = [loki.write.loki.receiver]
+          }
+
+          // ===========================================================
+          // Collect system logs
+          // ===========================================================
+          local.file_match "system_logs" {
+            path_targets = [{
+              "__path__" = "/var/log/*log",
+              "job"      = "varlogs",
+              "team"     = "DevOps",
+              "env"      = "Prod",
+              "host"     = "python-app",
+            }]
+          }
+
+          loki.source.file "system_log_source" {
+            targets    = local.file_match.system_logs.targets
+            forward_to = [loki.write.loki.receiver]
+          }
+
+          // ===========================================================
+          // Forward logs to Loki
+          // ===========================================================
+          loki.write "loki" {
+            endpoint {
+              url = "http://{{ loki_ip }}:3100/loki/api/v1/push"
+            }
+          }
+
+    # ---------------------------------------------------------------
+    # Start Grafana Alloy
+    # ---------------------------------------------------------------
+    - name: Create systemd override directory for alloy
+      file:
+        path: /etc/systemd/system/alloy.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Override Alloy listen address to 0.0.0.0
+      copy:
+        dest: /etc/systemd/system/alloy.service.d/override.conf
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/alloy run --storage.path=/var/lib/alloy/data --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      changed_when: false
+
+    - name: Enable alloy service
+      command: systemctl enable alloy
+      changed_when: false
+
+    - name: Restart alloy service
+      command: systemctl restart alloy
+      changed_when: false

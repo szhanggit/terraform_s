@@ -1,0 +1,263 @@
+---
+- name: Provision dotnet app EC2 instance
+  hosts: dotnet_app
+  become: true
+  vars:
+    docker_gpg_url: https://download.docker.com/linux/ubuntu/gpg
+    docker_repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    prometheus_ip: "{{ lookup('file', 'prometheus_ip.txt') | trim }}"
+
+  tasks:
+    # ---------------------------------------------------------------
+    # System basics
+    # ---------------------------------------------------------------
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 2; done
+      changed_when: false
+
+    - name: Update apt cache
+      command: apt-get update
+      changed_when: false
+
+    - name: Upgrade apt packages
+      command: apt-get dist-upgrade -y
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+      register: apt_upgrade
+      retries: 10
+      delay: 5
+      until: apt_upgrade.rc == 0
+
+    - name: Update apt cache (module)
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - software-properties-common
+          - git
+          - tmux
+          - sqlite3
+          - mysql-client
+          - unzip
+          - jq
+        state: present
+
+    # ---------------------------------------------------------------
+    # Docker
+    # ---------------------------------------------------------------
+    - name: Create /etc/apt/keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Docker GPG key
+      get_url:
+        url: "{{ docker_gpg_url }}"
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    - name: Add Docker repository
+      apt_repository:
+        repo: "{{ docker_repo }}"
+        state: present
+
+    - name: Install Docker packages
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+
+    - name: Enable containerd service
+      command: systemctl enable containerd
+      changed_when: false
+
+    - name: Start containerd service
+      command: systemctl start containerd
+      changed_when: false
+
+    - name: Enable docker service
+      command: systemctl enable docker
+      changed_when: false
+
+    - name: Start docker service
+      command: systemctl start docker
+      changed_when: false
+
+    - name: Wait for Docker socket to be ready
+      wait_for:
+        path: /var/run/docker.sock
+        state: present
+        timeout: 30
+
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: true
+
+    # ---------------------------------------------------------------
+    # .NET 9 ASP.NET Core Runtime
+    # ---------------------------------------------------------------
+    - name: Download dotnet-install script
+      get_url:
+        url: https://dot.net/v1/dotnet-install.sh
+        dest: /tmp/dotnet-install.sh
+        mode: '0755'
+
+    - name: Install ASP.NET Core Runtime 9
+      shell: /tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore --install-dir /usr/share/dotnet
+      args:
+        creates: /usr/share/dotnet/dotnet
+
+    - name: Create dotnet symlink in PATH
+      file:
+        src: /usr/share/dotnet/dotnet
+        dest: /usr/local/bin/dotnet
+        state: link
+
+    # ---------------------------------------------------------------
+    # Install and run metricapp
+    # ---------------------------------------------------------------
+    - name: Clone metricapp repository
+      git:
+        repo: https://github.com/szhanggit/metricapp.git
+        dest: /home/ubuntu/metricapp
+        version: HEAD
+
+    - name: Build metricapp Docker image
+      command: docker build -t metricapp .
+      args:
+        chdir: /home/ubuntu/metricapp
+
+    - name: Run metricapp container
+      command: >
+        docker run -d
+        -p 8020:8080
+        --add-host=host.docker.internal:host-gateway
+        -e OtelCollector__Host=http://host.docker.internal:4318/v1/metrics
+        --name metricapp
+        metricapp
+
+    # ---------------------------------------------------------------
+    # Install Grafana Alloy
+    # ---------------------------------------------------------------
+    - name: Create /etc/apt/keyrings directory for Grafana
+      command: mkdir -p /etc/apt/keyrings
+      changed_when: false
+
+    - name: Download Grafana GPG key
+      command: wget -qO /etc/apt/keyrings/grafana.asc https://apt.grafana.com/gpg-full.key
+      changed_when: false
+
+    - name: Add Grafana apt repository
+      shell: echo "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main" | tee /etc/apt/sources.list.d/grafana.list
+      changed_when: false
+
+    - name: Update apt cache after adding Grafana repository
+      command: apt-get update
+      changed_when: false
+
+    - name: Install Grafana Alloy
+      command: apt-get install alloy -y
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Configure Grafana Alloy
+    # Collects node metrics → Prometheus
+    # Receives metricapp OTLP metrics → Prometheus
+    # ---------------------------------------------------------------
+    - name: Create Alloy config directory
+      file:
+        path: /etc/alloy
+        state: directory
+        mode: '0755'
+
+    - name: Create Alloy config
+      copy:
+        dest: /etc/alloy/config.alloy
+        content: |
+          // ===========================================================
+          // Node metrics (replaces node_exporter)
+          // ===========================================================
+          prometheus.exporter.unix "node_metrics" { }
+
+          prometheus.scrape "node_scrape" {
+            targets    = prometheus.exporter.unix.node_metrics.targets
+            forward_to = [prometheus.relabel.node_job_relabel.receiver]
+            job_name   = "DotNetNode"
+          }
+
+          prometheus.relabel "node_job_relabel" {
+            forward_to = [prometheus.remote_write.prom.receiver]
+
+            rule {
+              target_label = "job"
+              replacement  = "DotNetNode"
+            }
+          }
+
+          // ===========================================================
+          // Receive metricapp OTLP metrics and forward to Prometheus
+          // ===========================================================
+          otelcol.receiver.otlp "otlp_receiver" {
+            http { endpoint = "0.0.0.0:4318" }
+
+            output {
+              metrics = [otelcol.exporter.prometheus.to_prom.input]
+            }
+          }
+
+          otelcol.exporter.prometheus "to_prom" {
+            forward_to = [prometheus.remote_write.prom.receiver]
+          }
+
+          // ===========================================================
+          // Forward metrics to Prometheus via remote write
+          // ===========================================================
+          prometheus.remote_write "prom" {
+            endpoint {
+              url = "http://{{ prometheus_ip }}:9090/api/v1/write"
+            }
+          }
+
+    # ---------------------------------------------------------------
+    # Start Grafana Alloy
+    # ---------------------------------------------------------------
+    - name: Create systemd override directory for alloy
+      file:
+        path: /etc/systemd/system/alloy.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Override Alloy listen address to 0.0.0.0
+      copy:
+        dest: /etc/systemd/system/alloy.service.d/override.conf
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/alloy run --storage.path=/var/lib/alloy/data --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      changed_when: false
+
+    - name: Enable alloy service
+      command: systemctl enable alloy
+      changed_when: false
+
+    - name: Restart alloy service
+      command: systemctl restart alloy
+      changed_when: false
