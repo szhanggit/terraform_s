@@ -1,13 +1,14 @@
-
+ssh -i ~/.ssh/id_ed25519 ubuntu@99.79.79.63      loki
+ssh -i ~/.ssh/id_ed25519 ubuntu@3.96.141.143     prometheus
 ssh -i ~/.ssh/id_ed25519 ubuntu@35.182.44.215    webserver
-
+ssh -i ~/.ssh/id_ed25519 ubuntu@15.223.198.111   grafana
 
 http://35.182.44.215:8020
 
-
-
-
-
+http://3.99.185.197:8020
+http://3.96.141.143:9090/targets        prometheus
+http://15.223.198.111:3000              grafana
+z8DmzgUd78LWmXi
 
 
 cd terraform && terraform destroy -var-file terraform-dev.tfvars -auto-approve -target aws_instance.dotnet-app

@@ -182,7 +182,12 @@
           prometheus.scrape "node_scrape" {
             targets    = prometheus.exporter.unix.node_metrics.targets
             forward_to = [prometheus.remote_write.prom.receiver]
-            job_name   = "node"
+            job_name   = "DotNetNode"
+
+            rule {
+              target_label = "job"
+              replacement  = "DotNetNode"
+            }
           }
 
           // ===========================================================
