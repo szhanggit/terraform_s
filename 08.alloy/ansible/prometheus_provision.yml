@@ -1,0 +1,166 @@
+---
+- name: Provision prometheus EC2 instance
+  hosts: prometheus
+  become: true
+
+  tasks:
+    # ---------------------------------------------------------------
+    # System basics
+    # ---------------------------------------------------------------
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 2; done
+      changed_when: false
+
+    - name: Update apt cache
+      command: apt-get update
+      changed_when: false
+
+    - name: Upgrade apt packages
+      command: apt-get dist-upgrade -y
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+      register: apt_upgrade
+      retries: 10
+      delay: 5
+      until: apt_upgrade.rc == 0
+
+    - name: Update apt cache (module)
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - software-properties-common
+          - git
+          - tmux
+          - sqlite3
+          - mysql-client
+          - unzip
+          - jq
+          - wget
+        state: present
+
+    # ---------------------------------------------------------------
+    # Setup prometheus group and user
+    # ---------------------------------------------------------------
+    - name: Create prometheus system group
+      command: groupadd --system prometheus
+      changed_when: false
+      ignore_errors: true
+
+    - name: Create prometheus system user
+      command: useradd -s /sbin/nologin --system -g prometheus prometheus
+      changed_when: false
+      ignore_errors: true
+
+    # ---------------------------------------------------------------
+    # Create directories
+    # ---------------------------------------------------------------
+    - name: Create /var/lib/prometheus
+      command: mkdir -p /var/lib/prometheus
+      changed_when: false
+
+    - name: Create /etc/prometheus/rules
+      command: mkdir -p /etc/prometheus/rules
+      changed_when: false
+
+    - name: Create /etc/prometheus/rules.s
+      command: mkdir -p /etc/prometheus/rules.s
+      changed_when: false
+
+    - name: Create /etc/prometheus/files_sd
+      command: mkdir -p /etc/prometheus/files_sd
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Download and install prometheus
+    # ---------------------------------------------------------------
+    - name: Download prometheus
+      command: wget https://github.com/prometheus/prometheus/releases/download/v3.5.3/prometheus-3.5.3.linux-amd64.tar.gz
+      args:
+        chdir: /home/ubuntu
+
+    - name: Extract prometheus package
+      command: tar xvf prometheus-3.5.3.linux-amd64.tar.gz
+      args:
+        chdir: /home/ubuntu
+
+    - name: Move prometheus and promtool to /usr/local/bin
+      command: mv prometheus promtool /usr/local/bin/
+      args:
+        chdir: /home/ubuntu/prometheus-3.5.3.linux-amd64
+
+    - name: Move prometheus.yml to /etc/prometheus
+      command: mv prometheus.yml /etc/prometheus/prometheus.yml
+      args:
+        chdir: /home/ubuntu/prometheus-3.5.3.linux-amd64
+
+    # ---------------------------------------------------------------
+    # Create prometheus systemd service
+    # Remote write receiver is enabled so Alloy agents can push metrics
+    # ---------------------------------------------------------------
+    - name: Create prometheus systemd service
+      copy:
+        dest: /etc/systemd/system/prometheus.service
+        content: |
+          [Unit]
+          Description=Prometheus
+          Documentation=https://prometheus.io/docs/introduction/overview/
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          User=prometheus
+          Group=prometheus
+          ExecReload=/bin/kill -HUP $MAINPID
+          ExecStart=/usr/local/bin/prometheus \
+            --config.file=/etc/prometheus/prometheus.yml \
+            --storage.tsdb.path=/var/lib/prometheus \
+            --web.console.templates=/etc/prometheus/consoles \
+            --web.console.libraries=/etc/prometheus/console_libraries \
+            --web.listen-address=0.0.0.0:9090 \
+            --web.enable-remote-write-receiver \
+            --web.external-url=
+          SyslogIdentifier=prometheus
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+
+    # ---------------------------------------------------------------
+    # Set privileges
+    # ---------------------------------------------------------------
+    - name: Set ownership of /etc/prometheus
+      command: chown -R prometheus:prometheus /etc/prometheus/
+      changed_when: false
+
+    - name: Set permissions on /etc/prometheus
+      command: chmod -R 775 /etc/prometheus/
+      changed_when: false
+
+    - name: Set ownership of /var/lib/prometheus
+      command: chown -R prometheus:prometheus /var/lib/prometheus
+      changed_when: false
+
+    # ---------------------------------------------------------------
+    # Start prometheus
+    # ---------------------------------------------------------------
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      changed_when: false
+
+    - name: Enable prometheus
+      command: systemctl enable prometheus
+      changed_when: false
+
+    - name: Start prometheus
+      command: systemctl start prometheus
+      changed_when: false

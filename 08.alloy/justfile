@@ -1,0 +1,143 @@
+set dotenv-load
+
+# Default: show available commands
+default:
+    @just --list
+
+# Generate a fresh SSH key pair for the migration instance
+generate-ssh-key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    KEY=~/.ssh/id_ed25519
+    if [ -f "$KEY" ]; then
+        echo "Key already exists: $KEY"
+        echo "Delete it first if you want to regenerate."
+    else
+        ssh-keygen -t ed25519 -f "$KEY" -N "" -C "migration-instance"
+        echo "Generated: $KEY and $KEY.pub"
+    fi
+
+# Run terraform init
+tf-init:
+    cd terraform && terraform init
+
+# Run terraform plan
+tf-plan:
+    cd terraform && terraform plan -var-file terraform-dev.tfvars
+
+# Run terraform apply
+tf-apply:
+    cd terraform && terraform apply -var-file terraform-dev.tfvars -auto-approve
+
+# Run terraform destroy
+tf-destroy:
+    cd terraform && terraform destroy -var-file terraform-dev.tfvars -auto-approve
+
+# Save the instance public IPs from terraform output
+save-instance-ip:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dotnet_app_IP=$(cd terraform && terraform output -raw dotnet_app_public_ip)
+    python_app_IP=$(cd terraform && terraform output -raw python_app_public_ip)
+    prometheus_IP=$(cd terraform && terraform output -raw prometheus_public_ip)
+    loki_IP=$(cd terraform && terraform output -raw loki_public_ip)
+    grafana_IP=$(cd terraform && terraform output -raw grafana_public_ip)
+    if [ -z "$dotnet_app_IP" ]; then
+        echo "ERROR: No dotnet app IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    if [ -z "$python_app_IP" ]; then
+        echo "ERROR: No python app IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    if [ -z "$prometheus_IP" ]; then
+        echo "ERROR: No prometheus IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    if [ -z "$loki_IP" ]; then
+        echo "ERROR: No loki IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    if [ -z "$grafana_IP" ]; then
+        echo "ERROR: No grafana IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    echo "$dotnet_app_IP" > ansible/dotnet_app_ip.txt
+    echo "$python_app_IP" > ansible/python_app_ip.txt
+    echo "$prometheus_IP" > ansible/prometheus_ip.txt
+    echo "$loki_IP" > ansible/loki_ip.txt
+    echo "$grafana_IP" > ansible/grafana_ip.txt
+    echo "Saved dotnet app IP: $dotnet_app_IP"
+    echo "Saved python app IP: $python_app_IP"
+    echo "Saved prometheus IP: $prometheus_IP"
+    echo "Saved loki IP: $loki_IP"
+    echo "Saved grafana IP: $grafana_IP"
+
+# Generate ansible inventory from the saved IPs
+update-inventory: save-instance-ip
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dotnet_app_IP=$(cat ansible/dotnet_app_ip.txt)
+    python_app_IP=$(cat ansible/python_app_ip.txt)
+    prometheus_IP=$(cat ansible/prometheus_ip.txt)
+    loki_IP=$(cat ansible/loki_ip.txt)
+    grafana_IP=$(cat ansible/grafana_ip.txt)
+    cat > ansible/inventory.yml << EOF
+    all:
+      hosts:
+        dotnet_app:
+          ansible_host: ${dotnet_app_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        python_app:
+          ansible_host: ${python_app_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        prometheus:
+          ansible_host: ${prometheus_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        loki:
+          ansible_host: ${loki_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        grafana:
+          ansible_host: ${grafana_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    EOF
+    echo "Generated ansible/inventory.yml"
+    cat ansible/inventory.yml
+
+# Run ansible provisioning playbooks
+run-ansible:
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/prometheus_provision.yml
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/loki_provision.yml
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/dotnet_app_provision.yml
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/python_app_provision.yml
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/grafana_provision.yml
+
+# SSH into an instance (usage: just ssh-instance <host>)
+ssh-instance host:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ host }}" in
+      dotnet_app)  IP=$(cat ansible/dotnet_app_ip.txt) ;;
+      python_app)  IP=$(cat ansible/python_app_ip.txt) ;;
+      prometheus)  IP=$(cat ansible/prometheus_ip.txt) ;;
+      loki)        IP=$(cat ansible/loki_ip.txt) ;;
+      grafana)     IP=$(cat ansible/grafana_ip.txt) ;;
+      *) echo "Unknown host: {{ host }}. Use: dotnet_app, python_app, prometheus, loki, grafana"; exit 1 ;;
+    esac
+    ssh -i ~/.ssh/id_ed25519 \
+        -o StrictHostKeyChecking=no \
+        "ubuntu@${IP}"
+
+# Full setup: init terraform, apply, update inventory, provision all servers
+setup: tf-init tf-apply update-inventory run-ansible
+    @echo "Alloy stack is ready. Run 'just ssh-instance <host>' to connect."

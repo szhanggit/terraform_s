@@ -1,0 +1,27 @@
+all:
+  hosts:
+    dotnet_app:
+      ansible_host: 35.183.236.43
+      ansible_user: ubuntu
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    python_app:
+      ansible_host: 15.223.216.42
+      ansible_user: ubuntu
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    prometheus:
+      ansible_host: 15.223.205.53
+      ansible_user: ubuntu
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    loki:
+      ansible_host: 3.96.155.97
+      ansible_user: ubuntu
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    grafana:
+      ansible_host: 16.52.37.76
+      ansible_user: ubuntu
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
