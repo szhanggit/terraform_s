@@ -206,6 +206,6 @@
       command: systemctl enable alloy
       changed_when: false
 
-    - name: Start alloy service
-      command: systemctl start alloy
+    - name: Restart alloy service
+      command: systemctl restart alloy
       changed_when: false

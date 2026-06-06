@@ -80,6 +80,14 @@
           - docker-compose-plugin
         state: present
 
+    - name: Enable containerd service
+      command: systemctl enable containerd
+      changed_when: false
+
+    - name: Start containerd service
+      command: systemctl start containerd
+      changed_when: false
+
     - name: Enable docker service
       command: systemctl enable docker
       changed_when: false
@@ -135,7 +143,13 @@
         chdir: /home/ubuntu/metricapp
 
     - name: Run metricapp container
-      command: docker run -d -p 8020:8080 --name metricapp metricapp
+      command: >
+        docker run -d
+        -p 8020:8080
+        --add-host=host.docker.internal:host-gateway
+        -e OtelCollector__Host=http://host.docker.internal:4318/v1/metrics
+        --name metricapp
+        metricapp
 
     # ---------------------------------------------------------------
     # Install Grafana Alloy
@@ -163,6 +177,7 @@
     # ---------------------------------------------------------------
     # Configure Grafana Alloy
     # Collects node metrics → Prometheus
+    # Receives metricapp OTLP metrics → Prometheus
     # ---------------------------------------------------------------
     - name: Create Alloy config directory
       file:
@@ -181,8 +196,12 @@
 
           prometheus.scrape "node_scrape" {
             targets    = prometheus.exporter.unix.node_metrics.targets
-            forward_to = [prometheus.remote_write.prom.receiver]
+            forward_to = [prometheus.relabel.node_job_relabel.receiver]
             job_name   = "DotNetNode"
+          }
+
+          prometheus.relabel "node_job_relabel" {
+            forward_to = [prometheus.remote_write.prom.receiver]
 
             rule {
               target_label = "job"
@@ -191,14 +210,18 @@
           }
 
           // ===========================================================
-          // metricapp application metrics
+          // Receive metricapp OTLP metrics and forward to Prometheus
           // ===========================================================
-          prometheus.scrape "metricapp_scrape" {
-            targets = [{
-              "__address__" = "localhost:8020",
-            }]
+          otelcol.receiver.otlp "otlp_receiver" {
+            http { endpoint = "0.0.0.0:4318" }
+
+            output {
+              metrics = [otelcol.exporter.prometheus.to_prom.input]
+            }
+          }
+
+          otelcol.exporter.prometheus "to_prom" {
             forward_to = [prometheus.remote_write.prom.receiver]
-            job_name   = "metricapp"
           }
 
           // ===========================================================
@@ -235,6 +258,6 @@
       command: systemctl enable alloy
       changed_when: false
 
-    - name: Start alloy service
-      command: systemctl start alloy
+    - name: Restart alloy service
+      command: systemctl restart alloy
       changed_when: false
