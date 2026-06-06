@@ -184,6 +184,20 @@
     # ---------------------------------------------------------------
     # Start Grafana Alloy
     # ---------------------------------------------------------------
+    - name: Create systemd override directory for alloy
+      file:
+        path: /etc/systemd/system/alloy.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Override Alloy listen address to 0.0.0.0
+      copy:
+        dest: /etc/systemd/system/alloy.service.d/override.conf
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/alloy run --storage.path=/var/lib/alloy/data --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+
     - name: Reload systemd daemon
       command: systemctl daemon-reload
       changed_when: false

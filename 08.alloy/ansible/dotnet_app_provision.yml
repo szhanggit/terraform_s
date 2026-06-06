@@ -6,7 +6,6 @@
     docker_gpg_url: https://download.docker.com/linux/ubuntu/gpg
     docker_repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
     prometheus_ip: "{{ lookup('file', 'prometheus_ip.txt') | trim }}"
-    loki_ip: "{{ lookup('file', 'loki_ip.txt') | trim }}"
 
   tasks:
     # ---------------------------------------------------------------
@@ -102,7 +101,7 @@
         append: true
 
     # ---------------------------------------------------------------
-    # .NET 10 ASP.NET Core Runtime
+    # .NET 9 ASP.NET Core Runtime
     # ---------------------------------------------------------------
     - name: Download dotnet-install script
       get_url:
@@ -110,8 +109,8 @@
         dest: /tmp/dotnet-install.sh
         mode: '0755'
 
-    - name: Install ASP.NET Core Runtime 10
-      shell: /tmp/dotnet-install.sh --channel 10.0 --runtime aspnetcore --install-dir /usr/share/dotnet
+    - name: Install ASP.NET Core Runtime 9
+      shell: /tmp/dotnet-install.sh --channel 9.0 --runtime aspnetcore --install-dir /usr/share/dotnet
       args:
         creates: /usr/share/dotnet/dotnet
 
@@ -122,21 +121,21 @@
         state: link
 
     # ---------------------------------------------------------------
-    # Install and run ShoeHub
+    # Install and run metricapp
     # ---------------------------------------------------------------
-    - name: Clone ShoeHub repository
+    - name: Clone metricapp repository
       git:
-        repo: https://github.com/aussiearef/shoehubv2
-        dest: /home/ubuntu/shoehubv2
+        repo: https://github.com/szhanggit/metricapp.git
+        dest: /home/ubuntu/metricapp
         version: HEAD
 
-    - name: Build ShoeHub Docker image
-      command: docker build -t shoehub .
+    - name: Build metricapp Docker image
+      command: docker build -t metricapp .
       args:
-        chdir: /home/ubuntu/shoehubv2/ShoeHubV2
+        chdir: /home/ubuntu/metricapp
 
-    - name: Run ShoeHub container
-      command: docker run -d -p 8020:8080 --name shoehub shoehub
+    - name: Run metricapp container
+      command: docker run -d -p 8020:8080 --name metricapp metricapp
 
     # ---------------------------------------------------------------
     # Install Grafana Alloy
@@ -163,8 +162,7 @@
 
     # ---------------------------------------------------------------
     # Configure Grafana Alloy
-    # Collects node metrics and ShoeHub metrics → Prometheus
-    # Collects system and ShoeHub logs → Loki
+    # Collects node metrics → Prometheus
     # ---------------------------------------------------------------
     - name: Create Alloy config directory
       file:
@@ -188,14 +186,14 @@
           }
 
           // ===========================================================
-          // ShoeHub application metrics
+          // metricapp application metrics
           // ===========================================================
-          prometheus.scrape "shoehub_scrape" {
+          prometheus.scrape "metricapp_scrape" {
             targets = [{
               "__address__" = "localhost:8020",
             }]
             forward_to = [prometheus.remote_write.prom.receiver]
-            job_name   = "shoehub"
+            job_name   = "metricapp"
           }
 
           // ===========================================================
@@ -207,53 +205,23 @@
             }
           }
 
-          // ===========================================================
-          // Collect system logs
-          // ===========================================================
-          local.file_match "system_logs" {
-            path_targets = [{
-              "__path__" = "/var/log/*log",
-              "job"      = "varlogs",
-              "team"     = "DevOps",
-              "env"      = "Prod",
-              "host"     = "dotnet-app",
-            }]
-          }
-
-          loki.source.file "system_log_source" {
-            targets    = local.file_match.system_logs.targets
-            forward_to = [loki.write.loki.receiver]
-          }
-
-          // ===========================================================
-          // Collect ShoeHub application logs
-          // ===========================================================
-          local.file_match "shoehub_logs" {
-            path_targets = [{
-              "__path__" = "/var/log/shoehub/log*",
-              "job"      = "shoehub",
-              "app"      = "shoehub",
-              "host"     = "dotnet-app",
-            }]
-          }
-
-          loki.source.file "shoehub_log_source" {
-            targets    = local.file_match.shoehub_logs.targets
-            forward_to = [loki.write.loki.receiver]
-          }
-
-          // ===========================================================
-          // Forward logs to Loki
-          // ===========================================================
-          loki.write "loki" {
-            endpoint {
-              url = "http://{{ loki_ip }}:3100/loki/api/v1/push"
-            }
-          }
-
     # ---------------------------------------------------------------
     # Start Grafana Alloy
     # ---------------------------------------------------------------
+    - name: Create systemd override directory for alloy
+      file:
+        path: /etc/systemd/system/alloy.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Override Alloy listen address to 0.0.0.0
+      copy:
+        dest: /etc/systemd/system/alloy.service.d/override.conf
+        content: |
+          [Service]
+          ExecStart=
+          ExecStart=/usr/bin/alloy run --storage.path=/var/lib/alloy/data --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+
     - name: Reload systemd daemon
       command: systemctl daemon-reload
       changed_when: false
