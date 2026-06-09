@@ -1,10 +1,16 @@
-ssh -i ~/.ssh/id_ed25519 ubuntu@99.79.38.28      app
-ssh -i ~/.ssh/id_ed25519 ubuntu@3.96.141.143     prometheus
-ssh -i ~/.ssh/id_ed25519 ubuntu@35.183.37.163    tempo
-ssh -i ~/.ssh/id_ed25519 ubuntu@99.79.74.208     grafana
+app_public_ip = "35.183.54.192"
+grafana_public_ip = "35.183.44.195"
+prometheus_public_ip = "3.96.191.222"
+tempo_public_ip = "15.222.242.20"
 
-http://3.99.139.152:9090/targets        prometheus
-http://35.182.154.20:3000              grafana
+
+ssh -i ~/.ssh/id_ed25519 ubuntu@35.183.54.192      app
+ssh -i ~/.ssh/id_ed25519 ubuntu@3.96.191.222     prometheus
+ssh -i ~/.ssh/id_ed25519 ubuntu@15.222.242.20    tempo
+ssh -i ~/.ssh/id_ed25519 ubuntu@35.183.44.195     grafana
+
+http://3.96.191.222:9090/targets        prometheus
+http://35.183.44.195:3000              grafana
 z8DmzgUd78LWmXi
 
 
@@ -13,9 +19,8 @@ cd terraform && terraform destroy -var-file terraform-dev.tfvars -auto-approve -
 cd terraform && terraform apply -var-file terraform-dev.tfvars -auto-approve
 
 # Check service status
-http://35.182.44.215:12345
+http://35.183.54.192:12345
 systemctl status alloy
-http://99.79.74.208:12345
 
 
 
