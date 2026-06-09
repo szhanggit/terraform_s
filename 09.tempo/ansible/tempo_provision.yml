@@ -148,13 +148,23 @@
                 - url: http://{{ prometheus_ip }}:9090/api/v1/write
                   send_exemplars: true
 
+          #storage:
+          #  trace:
+          #    backend: local
+          #    local:
+          #      path: /var/lib/tempo/traces
+          #    wal:
+          #      path: /var/lib/tempo/wal
+
           storage:
             trace:
-              backend: local
-              local:
-                path: /var/lib/tempo/traces
-              wal:
-                path: /var/lib/tempo/wal
+              backend: s3
+              s3:
+                bucket: steven-zhang-learning
+                region: ca-central-1
+                #access_key: 
+                #secret_key: 
+                role_arn: arn:aws:iam::286664220642:role/grafana-tempo-role
 
           overrides:
             defaults:
