@@ -1,0 +1,201 @@
+---
+- name: Provision Tempo EC2 instance
+  hosts: tempo
+  become: true
+  vars:
+    prometheus_ip: "{{ lookup('file', 'prometheus_ip.txt') | trim }}"
+
+  tasks:
+    # ---------------------------------------------------------------
+    # System basics
+    # ---------------------------------------------------------------
+    - name: Wait for apt locks to be released
+      shell: while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1; do sleep 2; done
+      changed_when: false
+
+    - name: Update apt cache
+      command: apt-get update
+      changed_when: false
+
+    - name: Upgrade apt packages
+      command: apt-get dist-upgrade -y
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+      register: apt_upgrade
+      retries: 10
+      delay: 5
+      until: apt_upgrade.rc == 0
+
+    - name: Update apt cache (module)
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install system packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - software-properties-common
+          - git
+          - tmux
+          - unzip
+          - jq
+          - wget
+        state: present
+
+    # ---------------------------------------------------------------
+    # Create tempo user and group
+    # ---------------------------------------------------------------
+    - name: Create tempo system group
+      command: groupadd --system tempo
+      changed_when: false
+      ignore_errors: true
+
+    - name: Create tempo system user
+      command: useradd -s /sbin/nologin --system -g tempo tempo
+      changed_when: false
+      ignore_errors: true
+
+    # ---------------------------------------------------------------
+    # Create directories
+    # ---------------------------------------------------------------
+    - name: Create Tempo directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: tempo
+        group: tempo
+        mode: '0755'
+      loop:
+        - /etc/tempo
+        - /var/lib/tempo
+        - /var/lib/tempo/traces
+        - /var/lib/tempo/wal
+        - /var/lib/tempo/generator
+        - /var/lib/tempo/generator/wal
+
+    # ---------------------------------------------------------------
+    # Download and install Tempo binary
+    # ---------------------------------------------------------------
+    - name: Download Tempo
+      command: wget https://github.com/grafana/tempo/releases/download/v2.6.1/tempo_2.6.1_linux_amd64.tar.gz
+      args:
+        chdir: /home/ubuntu
+
+    - name: Extract Tempo
+      command: tar xvf tempo_2.6.1_linux_amd64.tar.gz
+      args:
+        chdir: /home/ubuntu
+
+    - name: Move tempo binary to /usr/local/bin
+      command: mv tempo /usr/local/bin/tempo
+      args:
+        chdir: /home/ubuntu
+
+    - name: Set tempo binary permissions
+      file:
+        path: /usr/local/bin/tempo
+        mode: '0755'
+        owner: root
+        group: root
+
+    # ---------------------------------------------------------------
+    # Configure Tempo
+    # Receives OTLP traces from Alloy
+    # Generates service graph metrics pushed to Prometheus
+    # ---------------------------------------------------------------
+    - name: Create Tempo configuration
+      copy:
+        dest: /etc/tempo/tempo.yml
+        owner: tempo
+        group: tempo
+        mode: '0644'
+        content: |
+          server:
+            http_listen_port: 3200
+            log_level: info
+
+          distributor:
+            receivers:
+              otlp:
+                protocols:
+                  grpc:
+                    endpoint: 0.0.0.0:4317
+                  http:
+                    endpoint: 0.0.0.0:4318
+
+          ingester:
+            trace_idle_period: 10s
+            max_block_bytes: 1_000_000
+            max_block_duration: 5m
+
+          compactor:
+            compaction:
+              block_retention: 1h
+
+          metrics_generator:
+            registry:
+              external_labels:
+                source: tempo
+                cluster: demo
+            storage:
+              path: /var/lib/tempo/generator/wal
+              remote_write:
+                - url: http://{{ prometheus_ip }}:9090/api/v1/write
+                  send_exemplars: true
+
+          storage:
+            trace:
+              backend: local
+              local:
+                path: /var/lib/tempo/traces
+              wal:
+                path: /var/lib/tempo/wal
+
+          overrides:
+            defaults:
+              metrics_generator:
+                processors: [service-graphs, span-metrics]
+
+    # ---------------------------------------------------------------
+    # Create Tempo systemd service
+    # ---------------------------------------------------------------
+    - name: Create Tempo systemd service
+      copy:
+        dest: /etc/systemd/system/tempo.service
+        content: |
+          [Unit]
+          Description=Grafana Tempo
+          Documentation=https://grafana.com/docs/tempo/latest/
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          User=tempo
+          Group=tempo
+          ExecStart=/usr/local/bin/tempo -config.file=/etc/tempo/tempo.yml
+          SyslogIdentifier=tempo
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+
+    # ---------------------------------------------------------------
+    # Start Tempo
+    # ---------------------------------------------------------------
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      changed_when: false
+
+    - name: Enable tempo
+      command: systemctl enable tempo
+      changed_when: false
+
+    - name: Start tempo
+      command: systemctl start tempo
+      changed_when: false

@@ -1,0 +1,135 @@
+set dotenv-load
+
+# Default: show available commands
+default:
+    @just --list
+
+# Generate a fresh SSH key pair
+generate-ssh-key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    KEY=~/.ssh/id_ed25519
+    if [ -f "$KEY" ]; then
+        echo "Key already exists: $KEY"
+        echo "Delete it first if you want to regenerate."
+    else
+        ssh-keygen -t ed25519 -f "$KEY" -N "" -C "migration-instance"
+        echo "Generated: $KEY and $KEY.pub"
+    fi
+
+# Run terraform init
+tf-init:
+    cd terraform && terraform init
+
+# Run terraform plan
+tf-plan:
+    cd terraform && terraform plan -var-file terraform-dev.tfvars
+
+# Run terraform apply
+tf-apply:
+    cd terraform && terraform apply -var-file terraform-dev.tfvars -auto-approve
+
+# Run terraform destroy
+tf-destroy:
+    cd terraform && terraform destroy -var-file terraform-dev.tfvars -auto-approve
+
+# Save the instance public IPs from terraform output
+save-instance-ip:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    app_IP=$(cd terraform && terraform output -raw app_public_ip)
+    prometheus_IP=$(cd terraform && terraform output -raw prometheus_public_ip)
+    tempo_IP=$(cd terraform && terraform output -raw tempo_public_ip)
+    grafana_IP=$(cd terraform && terraform output -raw grafana_public_ip)
+    if [ -z "$app_IP" ]; then
+        echo "ERROR: No app IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    if [ -z "$prometheus_IP" ]; then
+        echo "ERROR: No prometheus IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    if [ -z "$tempo_IP" ]; then
+        echo "ERROR: No tempo IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    if [ -z "$grafana_IP" ]; then
+        echo "ERROR: No grafana IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    echo "$app_IP" > ansible/app_ip.txt
+    echo "$prometheus_IP" > ansible/prometheus_ip.txt
+    echo "$tempo_IP" > ansible/tempo_ip.txt
+    echo "$grafana_IP" > ansible/grafana_ip.txt
+    echo "Saved app IP: $app_IP"
+    echo "Saved prometheus IP: $prometheus_IP"
+    echo "Saved tempo IP: $tempo_IP"
+    echo "Saved grafana IP: $grafana_IP"
+
+# Generate ansible inventory from the saved IPs
+update-inventory: save-instance-ip
+    #!/usr/bin/env bash
+    set -euo pipefail
+    app_IP=$(cat ansible/app_ip.txt)
+    prometheus_IP=$(cat ansible/prometheus_ip.txt)
+    tempo_IP=$(cat ansible/tempo_ip.txt)
+    grafana_IP=$(cat ansible/grafana_ip.txt)
+    cat > ansible/inventory.yml << EOF
+    all:
+      hosts:
+        app:
+          ansible_host: ${app_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        prometheus:
+          ansible_host: ${prometheus_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        tempo:
+          ansible_host: ${tempo_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        grafana:
+          ansible_host: ${grafana_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    EOF
+    echo "Generated ansible/inventory.yml"
+    cat ansible/inventory.yml
+
+# Run ansible provisioning playbooks
+run-ansible:
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/prometheus_provision.yml
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/tempo_provision.yml
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/app_provision.yml
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/grafana_provision.yml
+
+# SSH into an instance (usage: just ssh-instance <host>)
+ssh-instance host:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ host }}" in
+      app)        IP=$(cat ansible/app_ip.txt) ;;
+      prometheus) IP=$(cat ansible/prometheus_ip.txt) ;;
+      tempo)      IP=$(cat ansible/tempo_ip.txt) ;;
+      grafana)    IP=$(cat ansible/grafana_ip.txt) ;;
+      *) echo "Unknown host: {{ host }}. Use: app, prometheus, tempo, grafana"; exit 1 ;;
+    esac
+    ssh -i ~/.ssh/id_ed25519 \
+        -o StrictHostKeyChecking=no \
+        "ubuntu@${IP}"
+
+# Full setup: init terraform, apply, update inventory, provision all servers
+setup: tf-init tf-apply update-inventory run-ansible
+    @echo "Tempo stack is ready."
+    @echo "  OrderService:   http://$(cat ansible/app_ip.txt):8020"
+    @echo "  PaymentService: http://$(cat ansible/app_ip.txt):8030"
+    @echo "  Alloy UI:       http://$(cat ansible/app_ip.txt):12345"
+    @echo "  Prometheus:     http://$(cat ansible/prometheus_ip.txt):9090"
+    @echo "  Tempo:          http://$(cat ansible/tempo_ip.txt):3200"
+    @echo "  Grafana:        http://$(cat ansible/grafana_ip.txt):3000"
+    @echo "  Run 'just ssh-instance <host>' to connect (app, prometheus, tempo, grafana)"

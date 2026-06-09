@@ -1,0 +1,22 @@
+all:
+  hosts:
+    app:
+      ansible_host: 99.79.38.28
+      ansible_user: ubuntu
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    prometheus:
+      ansible_host: 3.99.139.152
+      ansible_user: ubuntu
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    tempo:
+      ansible_host: 16.52.69.106
+      ansible_user: ubuntu
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    grafana:
+      ansible_host: 35.182.154.20
+      ansible_user: ubuntu
+      ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+      ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
