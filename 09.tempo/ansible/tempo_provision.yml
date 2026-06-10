@@ -159,12 +159,14 @@
           storage:
             trace:
               backend: s3
+              wal:
+                path: /var/lib/tempo/wal
               s3:
                 bucket: steven-zhang-learning
                 region: ca-central-1
-                #access_key: 
-                #secret_key: 
-                role_arn: arn:aws:iam::286664220642:role/grafana-tempo-role
+                endpoint: s3.ca-central-1.amazonaws.com
+                #access_key:
+                #secret_key:
 
           overrides:
             defaults:

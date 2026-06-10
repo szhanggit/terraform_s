@@ -1,12 +1,14 @@
-app_public_ip = "35.183.54.192"
-grafana_public_ip = "35.183.44.195"
-prometheus_public_ip = "3.96.191.222"
-tempo_public_ip = "15.222.242.20"
+  OrderService:   http://3.99.142.213:8020
+  PaymentService: http://3.99.142.213:8030
+  Alloy UI:       http://3.99.142.213:12345
+  Prometheus:     http://99.79.195.20:9090
+  Tempo:          http://99.79.37.155:3200
+  Grafana:        http://3.99.173.232:3000
 
 
 ssh -i ~/.ssh/id_ed25519 ubuntu@35.183.54.192      app
 ssh -i ~/.ssh/id_ed25519 ubuntu@3.96.191.222     prometheus
-ssh -i ~/.ssh/id_ed25519 ubuntu@15.222.242.20    tempo
+ssh -i ~/.ssh/id_ed25519 ubuntu@99.79.37.155    tempo
 ssh -i ~/.ssh/id_ed25519 ubuntu@35.183.44.195     grafana
 
 http://3.96.191.222:9090/targets        prometheus
@@ -30,15 +32,25 @@ Check if order service is working
 curl http://99.79.38.28:8020/
 How to check if alloy successfully receives metrics and traces?
 http://99.79.38.28:12345/api/v0/web/components
+--------------------------------------
 Alloy logs (SSH)
 sudo journalctl -u alloy -f
+--------------------------------------
+How to check the running status of tempo?
+# Service status
+sudo systemctl status tempo
+# Live logs
+sudo journalctl -u tempo -f
+--------------------------------------
 How to check if tempo has received metrics and traces successfully?
 http://16.52.69.106:3200/ready
 http://16.52.69.106:3200/metrics
 curl "http://16.52.69.106:3200/api/search?start=$(date -d '1 hour ago' +%s)&end=$(date +%s)"
 curl -s http://3.99.139.152:9090/api/v1/label/__name__/values | grep -o '"traces_[^"]*"'
+--------------------------------------
 Check if alloy connects with tempo
 curl -v telnet://16.52.69.106:4317
+--------------------------------------
 Check if tempo has data:
 curl -s http://16.52.69.106:3200/metrics | grep -E 'tempo_distributor_(push_duration_seconds|traces_per_batch)_count'
 How to check in prometheus, if receive any metrics?

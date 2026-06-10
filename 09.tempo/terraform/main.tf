@@ -273,6 +273,7 @@ resource "aws_instance" "tempo" {
     associate_public_ip_address = true
     key_name                    = aws_key_pair.ssh-key.key_name
     user_data                   = file("entry-script.sh")
+    iam_instance_profile        = aws_iam_instance_profile.tempo.name
     tags = {
         Name = "Tempo Server"
     }
@@ -290,6 +291,11 @@ resource "aws_instance" "grafana" {
     tags = {
         Name = "Grafana Server"
     }
+}
+
+resource "aws_iam_instance_profile" "tempo" {
+    name = "grafana-tempo-profile"
+    role = "grafana-tempo-role"
 }
 
 resource "aws_key_pair" "ssh-key" {
