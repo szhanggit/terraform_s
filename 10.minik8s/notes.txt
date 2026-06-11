@@ -1,0 +1,16 @@
+Kubernetes cluster is ready.
+  Master:  35.183.124.116
+  Node:    15.222.7.78
+
+
+ssh -i ~/.ssh/id_ed25519 ubuntu@35.183.124.116      master
+ssh -i ~/.ssh/id_ed25519 ubuntu@15.222.7.78     node
+
+
+
+
+
+cd terraform && terraform destroy -var-file terraform-dev.tfvars -auto-approve -target aws_instance.dotnet-app
+cd terraform && terraform destroy -var-file terraform-dev.tfvars -auto-approve -target aws_instance.python-app
+cd terraform && terraform apply -var-file terraform-dev.tfvars -auto-approve
+

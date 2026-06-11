@@ -1,0 +1,90 @@
+Here is the verification plan, organized into one SSH command per section so you can run them independently 
+and see exactly what passed:
+
+---
+1 — System packages
+just ssh-instance node
+echo "=== System packages ===" && \
+dpkg -l apt-transport-https ca-certificates curl gnupg software-properties-common git tmux unzip jq wget \
+  | awk '/^ii/{print "OK  "$2}  /^un|^rc/{print "MISSING "$2}'
+
+---
+2 — Docker
+echo "=== Docker version ===" && docker --version && \
+echo "=== daemon.json (expect cgroupdriver=systemd) ===" && cat /etc/docker/daemon.json && \
+echo "=== Docker active ===" && systemctl is-active docker && \
+echo "=== Docker enabled ===" && systemctl is-enabled docker && \
+echo "=== Cgroup driver (expect systemd) ===" && docker info 2>/dev/null | grep -i "cgroup driver" && \
+echo "=== ubuntu in docker group ===" && groups ubuntu
+
+---
+3 — Kernel modules and sysctl
+echo "=== /etc/modules-load.d/k8s.conf ===" && cat /etc/modules-load.d/k8s.conf && \
+echo "=== overlay loaded ===" && lsmod | grep -w overlay && \
+echo "=== br_netfilter loaded ===" && lsmod | grep br_netfilter && \
+echo "=== sysctl values (all must be 1) ===" && \
+  sysctl net.bridge.bridge-nf-call-iptables \
+         net.bridge.bridge-nf-call-ip6tables \
+         net.ipv4.ip_forward
+
+---
+4 — cri-dockerd
+echo "=== Binary (expect v0.4.3) ===" && /usr/bin/cri-dockerd --version && \
+echo "=== ExecStart in service file ===" && grep ExecStart /etc/systemd/system/cri-docker.service && \
+echo "=== cri-docker.socket active ===" && systemctl is-active cri-docker.socket && \
+echo "=== cri-docker.service active ===" && systemctl is-active cri-docker && \
+echo "=== socket file exists ===" && ls /var/run/cri-dockerd.sock
+
+---
+5 — Swap
+echo "=== swapon (must be empty) ===" && swapon --show && \
+echo "=== fstab swap entries (must all be commented) ===" && grep -i swap /etc/fstab && \
+echo "=== free -h (Swap row must show 0) ===" && free -h
+
+---
+6 — Kubernetes packages
+echo "=== GPG key ===" && ls -la /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
+echo "=== apt repo ===" && cat /etc/apt/sources.list.d/kubernetes.list && \
+echo "=== kubeadm ===" && kubeadm version && \
+echo "=== kubelet ===" && kubelet --version && \
+echo "=== kubectl ===" && kubectl version --client && \
+echo "=== held packages (must list kubeadm kubelet kubectl) ===" && apt-mark showhold
+
+---
+
+
+
+Has problem:
+7 — Cluster join (run on node, then confirm from master)
+
+On node:
+echo "=== kubelet.conf exists ===" && ls /etc/kubernetes/kubelet.conf && \
+echo "=== kubelet active ===" && systemctl is-active kubelet && \
+echo "=== kubelet logs (last 5 lines) ===" && journalctl -u kubelet --no-pager -n 5
+
+On master (final confirmation):
+just ssh-instance master
+kubectl get nodes -o wide
+
+Expected output: both master and node appear with status Ready.
+
+---
+What each check proves
+
+┌─────────────────┬──────────────────────────────────────────────────────────────────────────┐
+│     Section     │                              Pass condition                              │
+├─────────────────┼──────────────────────────────────────────────────────────────────────────┤
+│ System packages │ dpkg -l shows ii (installed) for all 9 packages                          │
+├─────────────────┼──────────────────────────────────────────────────────────────────────────┤
+│ Docker          │ version ≥ 29, cgroupdriver = systemd, service active                     │
+├─────────────────┼──────────────────────────────────────────────────────────────────────────┤
+│ Kernel modules  │ overlay and br_netfilter in lsmod, all 3 sysctl = 1                      │
+├─────────────────┼──────────────────────────────────────────────────────────────────────────┤
+│ cri-dockerd     │ version = 0.4.3, ExecStart has pause:3.9, both socket and service active │
+├─────────────────┼──────────────────────────────────────────────────────────────────────────┤
+│ Swap            │ swapon --show empty, free -h Swap row is 0B                              │
+├─────────────────┼──────────────────────────────────────────────────────────────────────────┤
+│ K8s packages    │ all 3 binaries respond, all 3 held by apt-mark                           │
+├─────────────────┼──────────────────────────────────────────────────────────────────────────┤
+│ Cluster join    │ kubelet.conf exists, kubelet active, kubectl get nodes shows node Ready  │
+└─────────────────┴──────────────────────────────────────────────────────────────────────────┘

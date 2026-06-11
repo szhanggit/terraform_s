@@ -277,10 +277,6 @@
         dest: /tmp/kube-flannel.yml
         force: yes
 
-    - name: Add --iface=eth0 to flannel DaemonSet args
-      shell: |
-        sed -i '/- --kube-subnet-mgr/a\        - --iface=eth0' /tmp/kube-flannel.yml
-
     - name: Apply flannel CNI
       command: kubectl apply -f /tmp/kube-flannel.yml
       environment:
