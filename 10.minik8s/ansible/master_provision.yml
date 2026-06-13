@@ -242,6 +242,7 @@
         --kubernetes-version={{ k8s_version }}
         --pod-network-cidr={{ pod_network_cidr }}
         --cri-socket unix:///var/run/cri-dockerd.sock
+        --apiserver-cert-extra-sans={{ ansible_host }}
       when: not k8s_init_done.stat.exists
       register: kubeadm_init_result
 
@@ -281,3 +282,21 @@
       command: kubectl apply -f /tmp/kube-flannel.yml
       environment:
         KUBECONFIG: /etc/kubernetes/admin.conf
+
+    # -----------------------------------------------------------------------
+    # Download admin.conf and patch API server address for local kubectl use
+    # -----------------------------------------------------------------------
+
+    - name: Fetch admin.conf from master
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: "{{ playbook_dir }}/../admin.conf"
+        flat: yes
+
+    - name: Replace API server address with master public IP
+      replace:
+        path: "{{ playbook_dir }}/../admin.conf"
+        regexp: 'server: https://[^:]+:6443'
+        replace: 'server: https://{{ ansible_host }}:6443'
+      delegate_to: localhost
+      become: no
