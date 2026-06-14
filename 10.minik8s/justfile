@@ -1,0 +1,128 @@
+set dotenv-load
+
+# Default: show available commands
+default:
+    @just --list
+
+# Generate a fresh SSH key pair
+generate-ssh-key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    KEY=~/.ssh/id_ed25519
+    if [ -f "$KEY" ]; then
+        echo "Key already exists: $KEY"
+        echo "Delete it first if you want to regenerate."
+    else
+        ssh-keygen -t ed25519 -f "$KEY" -N "" -C "k8s-instance"
+        echo "Generated: $KEY and $KEY.pub"
+    fi
+
+# Run terraform init
+tf-init:
+    cd terraform && terraform init
+
+# Run terraform plan
+tf-plan:
+    cd terraform && terraform plan -var-file terraform-dev.tfvars
+
+# Run terraform apply
+tf-apply:
+    cd terraform && terraform apply -var-file terraform-dev.tfvars -auto-approve
+
+# Run terraform destroy
+tf-destroy:
+    cd terraform && terraform destroy -var-file terraform-dev.tfvars -auto-approve
+
+# Save the instance public IPs from terraform output
+save-instance-ip:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    master_IP=$(cd terraform && terraform output -raw master_public_ip)
+    node_IP=$(cd terraform && terraform output -raw node_public_ip)
+    if [ -z "$master_IP" ]; then
+        echo "ERROR: No master IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    if [ -z "$node_IP" ]; then
+        echo "ERROR: No node IP found. Did you run 'just tf-apply'?"
+        exit 1
+    fi
+    echo "$master_IP" > ansible/master_ip.txt
+    echo "$node_IP" > ansible/node_ip.txt
+    echo "Saved master IP: $master_IP"
+    echo "Saved node IP:   $node_IP"
+
+# Generate ansible inventory from the saved IPs
+update-inventory: save-instance-ip
+    #!/usr/bin/env bash
+    set -euo pipefail
+    master_IP=$(cat ansible/master_ip.txt)
+    node_IP=$(cat ansible/node_ip.txt)
+    cat > ansible/inventory.yml << EOF
+    all:
+      hosts:
+        master:
+          ansible_host: ${master_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        node:
+          ansible_host: ${node_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    EOF
+    echo "Generated ansible/inventory.yml"
+    cat ansible/inventory.yml
+
+# Provision master (kubeadm init + flannel CNI)
+run-master:
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/master_provision.yml
+
+# Provision worker node (kubeadm join)
+run-node:
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/node_provision.yml
+
+# Provision both master then node
+run-ansible: run-master run-node
+
+# SSH into an instance (usage: just ssh-instance master|node)
+ssh-instance host:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ host }}" in
+      master) IP=$(cat ansible/master_ip.txt) ;;
+      node)   IP=$(cat ansible/node_ip.txt) ;;
+      *) echo "Unknown host: {{ host }}. Use: master, node"; exit 1 ;;
+    esac
+    ssh -i ~/.ssh/id_ed25519 \
+        -o StrictHostKeyChecking=no \
+        "ubuntu@${IP}"
+
+# Copy kubeconfig from master to local machine
+get-kubeconfig:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    master_IP=$(cat ansible/master_ip.txt)
+    mkdir -p ~/.kube
+    scp -i ~/.ssh/id_ed25519 \
+        -o StrictHostKeyChecking=no \
+        "ubuntu@${master_IP}:/home/ubuntu/.kube/config" \
+        ~/.kube/config
+    # Replace private IP with public IP so kubectl works from local machine
+    sed -i "s|https://[0-9.]*:6443|https://${master_IP}:6443|g" ~/.kube/config
+    echo "Kubeconfig saved to ~/.kube/config"
+    echo "Test with: kubectl get nodes"
+
+# Full setup: init terraform, apply, update inventory, provision all
+setup: tf-init tf-apply update-inventory run-ansible
+    @echo ""
+    @echo "Kubernetes cluster is ready."
+    @echo "  Master:  $(cat ansible/master_ip.txt)"
+    @echo "  Node:    $(cat ansible/node_ip.txt)"
+    @echo ""
+    @echo "  K8s API: https://$(cat ansible/master_ip.txt):6443"
+    @echo ""
+    @echo "  Run 'just get-kubeconfig' to copy kubeconfig to local machine"
+    @echo "  Run 'just ssh-instance master' or 'just ssh-instance node' to connect"
+    @echo "  Then: kubectl get nodes"

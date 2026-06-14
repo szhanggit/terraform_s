@@ -1,0 +1,23 @@
+Kubernetes cluster is ready.
+  Master:  15.222.13.84
+  Node:    15.223.70.168
+
+  K8s API: https://15.222.13.84:6443
+
+
+ssh -i ~/.ssh/id_ed25519 ubuntu@15.222.13.84      master
+ssh -i ~/.ssh/id_ed25519 ubuntu@15.223.70.168     node
+
+
+
+
+
+cd terraform && terraform destroy -var-file terraform-dev.tfvars -auto-approve -target aws_instance.dotnet-app
+cd terraform && terraform destroy -var-file terraform-dev.tfvars -auto-approve -target aws_instance.python-app
+cd terraform && terraform apply -var-file terraform-dev.tfvars -auto-approve
+
+
+
+k8s-master:
+docker images
+ipconfig      查看网卡信息。

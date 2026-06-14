@@ -1,0 +1,21 @@
+1 — kubeadm init artifacts
+echo "=== admin.conf ===" && ls -la /etc/kubernetes/admin.conf && \
+echo "=== control plane manifests ===" && ls /etc/kubernetes/manifests/
+Expected: admin.conf exists; manifests directory contains etcd.yaml, kube-apiserver.yaml, kube-controller-manager.yaml, kube-scheduler.yaml.
+
+---
+2 — kubectl configured for ubuntu user
+echo "=== .kube/config ===" && ls -la ~/.kube/config && \
+echo "=== cluster-info ===" && kubectl cluster-info && \
+echo "=== kubectl version (client + server) ===" && kubectl version
+Expected: both client and server versions returned (server reachable means API server is up).
+
+---
+3 — Control plane pods
+kubectl get pods -n kube-system -o wide
+Expected: etcd, kube-apiserver, kube-controller-manager, kube-scheduler, kube-proxy, coredns all Running.
+
+---
+4 — Flannel CNI
+kubectl get pods -n kube-flannel -o wide
+Expected: one kube-flannel-ds-* pod per node, both 1/1 Running.
