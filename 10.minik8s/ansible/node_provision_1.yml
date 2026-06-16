@@ -247,3 +247,10 @@
     - name: Join Kubernetes cluster
       command: "{{ hostvars['master']['join_command'] }}"
       when: not node_joined.stat.exists
+
+    # -----------------------------------------------------------------------
+    # socat
+    # -----------------------------------------------------------------------
+
+    - name: Update apt cache and install socat
+      shell: apt-get update && apt-get install -y socat
