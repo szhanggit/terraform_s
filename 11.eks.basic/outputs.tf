@@ -1,55 +1,55 @@
 output "cluster_id" {
-  value = aws_eks_cluster.main.id
+  value = module.eks_cluster.cluster_id
 }
 
 output "cluster_endpoint" {
-  value = aws_eks_cluster.main.endpoint
+  value = module.eks_cluster.cluster_endpoint
 }
 
 output "cluster_certificate_authority_data" {
-  value = aws_eks_cluster.main.certificate_authority[0].data
+  value = module.eks_cluster.cluster_certificate_authority_data
 }
 
 output "cluster_security_group_id" {
-  value = aws_eks_cluster.main.vpc_config[0].cluster_security_group_id
+  value = module.eks_cluster.cluster_security_group_id
 }
 
 output "vpc_id" {
-  value = aws_vpc.main.id
+  value = module.vpc.vpc_id
 }
 
 output "public_subnet_ids" {
-  value = [for s in aws_subnet.public : s.id]
+  value = module.vpc.public_subnet_ids
 }
 
 output "private_subnet_ids" {
-  value = [for s in aws_subnet.private : s.id]
+  value = module.vpc.private_subnet_ids
 }
 
 output "nat_gateway_id" {
-  value = aws_nat_gateway.main.id
+  value = module.vpc.nat_gateway_id
 }
 
 output "oidc_provider_arn" {
-  value = aws_iam_openid_connect_provider.eks.arn
+  value = module.eks_cluster.oidc_provider_arn
 }
 
 output "oidc_provider_url" {
-  value = aws_iam_openid_connect_provider.eks.url
+  value = module.eks_cluster.oidc_provider_url
 }
 
 output "nodegroup_arn" {
-  value = aws_eks_node_group.public1.arn
+  value = module.eks_nodegroup.nodegroup_arn
 }
 
 output "nodegroup_status" {
-  value = aws_eks_node_group.public1.status
+  value = module.eks_nodegroup.nodegroup_status
 }
 
 output "node_role_arn" {
-  value = aws_iam_role.nodegroup.arn
+  value = module.eks_nodegroup.node_role_arn
 }
 
 output "ebs_csi_driver_role_arn" {
-  value = aws_iam_role.ebs_csi_driver.arn
+  value = module.eks_ebs_csi.ebs_csi_driver_role_arn
 }

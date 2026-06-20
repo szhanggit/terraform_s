@@ -9,18 +9,18 @@ data "aws_iam_policy_document" "ebs_csi_driver_assume_role" {
 
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.eks.arn]
+      identifiers = [var.oidc_provider_arn]
     }
 
     condition {
       test     = "StringEquals"
-      variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub"
+      variable = "${replace(var.oidc_provider_url, "https://", "")}:sub"
       values   = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
     }
 
     condition {
       test     = "StringEquals"
-      variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud"
+      variable = "${replace(var.oidc_provider_url, "https://", "")}:aud"
       values   = ["sts.amazonaws.com"]
     }
   }
@@ -41,12 +41,10 @@ resource "aws_iam_role_policy_attachment" "ebs_csi_driver" {
 # but installed as an EKS-managed add-on instead, which also creates and
 # annotates the ebs-csi-controller-sa service account with role_arn for us.
 resource "aws_eks_addon" "ebs_csi_driver" {
-  cluster_name             = aws_eks_cluster.main.name
+  cluster_name             = var.cluster_name
   addon_name               = "aws-ebs-csi-driver"
   service_account_role_arn = aws_iam_role.ebs_csi_driver.arn
 
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
-
-  depends_on = [aws_eks_node_group.public1]
 }
