@@ -1,0 +1,3 @@
+# Ad hoc plan files saved via `terraform plan -out=<name>` (not matched by the
+# repo-wide *.tfplan pattern since these don't use a .tfplan extension)
+tfplan*
