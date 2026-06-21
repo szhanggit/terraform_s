@@ -38,26 +38,41 @@ save-instance-ip:
     #!/usr/bin/env bash
     set -euo pipefail
     master_IP=$(cd terraform && terraform output -raw master_public_ip)
-    node_IP=$(cd terraform && terraform output -raw node_public_ip)
+    node_0_IP=$(cd terraform && terraform output -raw node_0_public_ip)
+    node_1_IP=$(cd terraform && terraform output -raw node_1_public_ip)
+    node_2_IP=$(cd terraform && terraform output -raw node_2_public_ip)
+    node_3_IP=$(cd terraform && terraform output -raw node_3_public_ip)
     if [ -z "$master_IP" ]; then
         echo "ERROR: No master IP found. Did you run 'just tf-apply'?"
         exit 1
     fi
-    if [ -z "$node_IP" ]; then
-        echo "ERROR: No node IP found. Did you run 'just tf-apply'?"
-        exit 1
-    fi
-    echo "$master_IP" > ansible/master_ip.txt
-    echo "$node_IP" > ansible/node_ip.txt
-    echo "Saved master IP: $master_IP"
-    echo "Saved node IP:   $node_IP"
+    for i in 0 1 2 3; do
+        var="node_${i}_IP"
+        if [ -z "${!var}" ]; then
+            echo "ERROR: No node-${i} IP found. Did you run 'just tf-apply'?"
+            exit 1
+        fi
+    done
+    echo "$master_IP"  > ansible/master_ip.txt
+    echo "$node_0_IP"  > ansible/node_ip_0.txt
+    echo "$node_1_IP"  > ansible/node_ip_1.txt
+    echo "$node_2_IP"  > ansible/node_ip_2.txt
+    echo "$node_3_IP"  > ansible/node_ip_3.txt
+    echo "Saved master IP:  $master_IP"
+    echo "Saved node-0 IP:  $node_0_IP"
+    echo "Saved node-1 IP:  $node_1_IP"
+    echo "Saved node-2 IP:  $node_2_IP"
+    echo "Saved node-3 IP:  $node_3_IP"
 
 # Generate ansible inventory from the saved IPs
 update-inventory: save-instance-ip
     #!/usr/bin/env bash
     set -euo pipefail
     master_IP=$(cat ansible/master_ip.txt)
-    node_IP=$(cat ansible/node_ip.txt)
+    node_0_IP=$(cat ansible/node_ip_0.txt)
+    node_1_IP=$(cat ansible/node_ip_1.txt)
+    node_2_IP=$(cat ansible/node_ip_2.txt)
+    node_3_IP=$(cat ansible/node_ip_3.txt)
     cat > ansible/inventory.yml << EOF
     all:
       hosts:
@@ -66,11 +81,33 @@ update-inventory: save-instance-ip
           ansible_user: ubuntu
           ansible_ssh_private_key_file: ~/.ssh/id_ed25519
           ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
-        node:
-          ansible_host: ${node_IP}
+        node-0:
+          ansible_host: ${node_0_IP}
           ansible_user: ubuntu
           ansible_ssh_private_key_file: ~/.ssh/id_ed25519
           ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        node-1:
+          ansible_host: ${node_1_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        node-2:
+          ansible_host: ${node_2_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        node-3:
+          ansible_host: ${node_3_IP}
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+      children:
+        nodes:
+          hosts:
+            node-0:
+            node-1:
+            node-2:
+            node-3:
     EOF
     echo "Generated ansible/inventory.yml"
     cat ansible/inventory.yml
@@ -79,21 +116,39 @@ update-inventory: save-instance-ip
 run-master:
     ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/master_provision.yml
 
-# Provision worker node (kubeadm join)
-run-node:
-    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/node_provision.yml
+# Provision worker node-0 (kubeadm join)
+run-node-0:
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/node_provision_0.yml
 
-# Provision both master then node
-run-ansible: run-master run-node
+# Provision worker node-1 (kubeadm join)
+run-node-1:
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/node_provision_1.yml
 
-# SSH into an instance (usage: just ssh-instance master|node)
+# Provision worker node-2 (kubeadm join)
+run-node-2:
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/node_provision_2.yml
+
+# Provision worker node-3 (kubeadm join)
+run-node-3:
+    ../05.migration/.venv/bin/ansible-playbook -i ansible/inventory.yml ansible/node_provision_3.yml
+
+# Provision all worker nodes (kubeadm join)
+run-nodes: run-node-0 run-node-1 run-node-2 run-node-3
+
+# Provision master then all worker nodes
+run-ansible: run-master run-nodes
+
+# SSH into an instance (usage: just ssh-instance master|node-0|node-1|node-2|node-3)
 ssh-instance host:
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{ host }}" in
       master) IP=$(cat ansible/master_ip.txt) ;;
-      node)   IP=$(cat ansible/node_ip.txt) ;;
-      *) echo "Unknown host: {{ host }}. Use: master, node"; exit 1 ;;
+      node-0) IP=$(cat ansible/node_ip_0.txt) ;;
+      node-1) IP=$(cat ansible/node_ip_1.txt) ;;
+      node-2) IP=$(cat ansible/node_ip_2.txt) ;;
+      node-3) IP=$(cat ansible/node_ip_3.txt) ;;
+      *) echo "Unknown host: {{ host }}. Use: master, node-0, node-1, node-2, node-3"; exit 1 ;;
     esac
     ssh -i ~/.ssh/id_ed25519 \
         -o StrictHostKeyChecking=no \
@@ -119,10 +174,13 @@ setup: tf-init tf-apply update-inventory run-ansible
     @echo ""
     @echo "Kubernetes cluster is ready."
     @echo "  Master:  $(cat ansible/master_ip.txt)"
-    @echo "  Node:    $(cat ansible/node_ip.txt)"
+    @echo "  Node-0:  $(cat ansible/node_ip_0.txt)"
+    @echo "  Node-1:  $(cat ansible/node_ip_1.txt)"
+    @echo "  Node-2:  $(cat ansible/node_ip_2.txt)"
+    @echo "  Node-3:  $(cat ansible/node_ip_3.txt)"
     @echo ""
     @echo "  K8s API: https://$(cat ansible/master_ip.txt):6443"
     @echo ""
     @echo "  Run 'just get-kubeconfig' to copy kubeconfig to local machine"
-    @echo "  Run 'just ssh-instance master' or 'just ssh-instance node' to connect"
+    @echo "  Run 'just ssh-instance master|node-0|node-1|node-2|node-3' to connect"
     @echo "  Then: kubectl get nodes"

@@ -12,9 +12,9 @@
       set_fact:
         join_command: "{{ join_command_raw.stdout }} --cri-socket unix:///var/run/cri-dockerd.sock"
 
-# Play 2: install prerequisites and join the cluster on the worker node
-- name: Provision Kubernetes Worker Node
-  hosts: node
+# Play 2: install prerequisites and join the cluster on node-1
+- name: Provision Kubernetes Worker Node 1
+  hosts: node-1
   become: yes
 
   vars:
@@ -162,8 +162,7 @@
         url: "https://raw.githubusercontent.com/Mirantis/cri-dockerd/master/packaging/systemd/cri-docker.socket"
         dest: /etc/systemd/system/cri-docker.socket
 
-    # Add pause image — binary path /usr/bin/cri-dockerd already matches service file default
-    - name: Configure cri-dockerd pause image (Aliyun mirror)
+    - name: Configure cri-dockerd pause image
       lineinfile:
         path: /etc/systemd/system/cri-docker.service
         regexp: 'ExecStart=/usr/bin/cri-dockerd.*'
@@ -248,3 +247,10 @@
     - name: Join Kubernetes cluster
       command: "{{ hostvars['master']['join_command'] }}"
       when: not node_joined.stat.exists
+
+    # -----------------------------------------------------------------------
+    # socat
+    # -----------------------------------------------------------------------
+
+    - name: Update apt cache and install socat
+      shell: apt-get update && apt-get install -y socat
