@@ -52,6 +52,48 @@ module "eks_cluster" {
   depends_on = [module.vpc]
 }
 
+# One-off Job that creates the empty "usermgmt" application database on the
+# RDS instance. Runs from inside the cluster since the DB sits in private
+# subnets and isn't reachable from outside the VPC.
+resource "kubernetes_job_v1" "usermgmt_db_init" {
+  metadata {
+    name = "usermgmt-db-init"
+  }
+
+  spec {
+    backoff_limit = 2
+
+    template {
+      metadata {
+        name = "usermgmt-db-init"
+      }
+
+      spec {
+        restart_policy = "Never"
+
+        container {
+          name    = "create-db"
+          image   = "mysql:8.4"
+          command = ["mysql", "-h", "mysql", "-P", "3306", "-u", var.db_master_username, "-e", "CREATE DATABASE IF NOT EXISTS usermgmt;"]
+
+          env {
+            name  = "MYSQL_PWD"
+            value = var.db_master_password
+          }
+        }
+      }
+    }
+  }
+
+  wait_for_completion = true
+
+  timeouts {
+    create = "2m"
+  }
+
+  depends_on = [kubernetes_service.mysql, module.eks_nodegroup, module.rds]
+}
+
 # ExternalName Service so in-cluster pods can reach the RDS database as host "mysql"
 resource "kubernetes_service" "mysql" {
   metadata {
