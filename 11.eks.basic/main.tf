@@ -62,3 +62,21 @@ module "eks_ebs_csi" {
 
   depends_on = [module.eks_nodegroup]
 }
+
+module "rds" {
+  source = "./modules/rds"
+
+  vpc_id                 = module.vpc.vpc_id
+  private_subnet_ids     = module.vpc.private_subnet_ids
+  db_instance_identifier = var.db_instance_identifier
+  db_engine_version      = var.db_engine_version
+  db_instance_class      = var.db_instance_class
+  db_allocated_storage   = var.db_allocated_storage
+  db_storage_type        = var.db_storage_type
+  db_master_username     = var.db_master_username
+  db_master_password     = var.db_master_password
+  db_port                = var.db_port
+  db_publicly_accessible = var.db_publicly_accessible
+
+  depends_on = [module.vpc]
+}

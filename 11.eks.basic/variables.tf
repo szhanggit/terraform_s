@@ -81,3 +81,57 @@ variable "ssh_public_key_name" {
   type        = string
   default     = "kube-demo"
 }
+
+variable "db_instance_identifier" {
+  description = "RDS DB instance identifier"
+  type        = string
+  default     = "usermgmtdb"
+}
+
+variable "db_engine_version" {
+  description = "RDS MySQL engine version"
+  type        = string
+  default     = "8.4.8"
+}
+
+variable "db_instance_class" {
+  description = "RDS DB instance size"
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "db_allocated_storage" {
+  description = "RDS allocated storage (GiB)"
+  type        = number
+  default     = 20
+}
+
+variable "db_storage_type" {
+  description = "RDS storage type"
+  type        = string
+  default     = "gp2"
+}
+
+variable "db_master_username" {
+  description = "Master username for the RDS database"
+  type        = string
+  default     = "dbadmin"
+}
+
+variable "db_master_password" {
+  description = "Master password for the RDS database. Set this in a local-only tfvars file (e.g. secrets.auto.tfvars), never commit it."
+  type        = string
+  sensitive   = true
+}
+
+variable "db_port" {
+  description = "RDS database port"
+  type        = number
+  default     = 3306
+}
+
+variable "db_publicly_accessible" {
+  description = "Whether the RDS instance is publicly accessible"
+  type        = bool
+  default     = true
+}

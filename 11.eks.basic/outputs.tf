@@ -53,3 +53,23 @@ output "node_role_arn" {
 output "ebs_csi_driver_role_arn" {
   value = module.eks_ebs_csi.ebs_csi_driver_role_arn
 }
+
+output "db_security_group_id" {
+  value = module.rds.db_security_group_id
+}
+
+output "db_subnet_group_name" {
+  value = module.rds.db_subnet_group_name
+}
+
+output "db_instance_endpoint" {
+  value = module.rds.db_instance_endpoint
+}
+
+output "db_instance_address" {
+  value = module.rds.db_instance_address
+}
+
+output "db_instance_port" {
+  value = module.rds.db_instance_port
+}
