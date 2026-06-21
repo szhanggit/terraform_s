@@ -10,11 +10,26 @@ terraform {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.38"
+    }
   }
 }
 
 provider "aws" {
   region = var.region
+}
+
+provider "kubernetes" {
+  host                   = module.eks_cluster.cluster_endpoint
+  cluster_ca_certificate = base64decode(module.eks_cluster.cluster_certificate_authority_data)
+
+  exec {
+    api_version = "client.authentication.k8s.io/v1beta1"
+    command     = "aws"
+    args        = ["--region", var.region, "eks", "get-token", "--cluster-name", var.cluster_name]
+  }
 }
 
 module "vpc" {
@@ -35,6 +50,20 @@ module "eks_cluster" {
   public_subnet_ids  = module.vpc.public_subnet_ids
 
   depends_on = [module.vpc]
+}
+
+# ExternalName Service so in-cluster pods can reach the RDS database as host "mysql"
+resource "kubernetes_service" "mysql" {
+  metadata {
+    name = "mysql"
+  }
+
+  spec {
+    type          = "ExternalName"
+    external_name = module.rds.db_instance_address
+  }
+
+  depends_on = [module.eks_nodegroup, module.rds]
 }
 
 module "eks_nodegroup" {
