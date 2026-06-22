@@ -54,6 +54,14 @@ output "ebs_csi_driver_role_arn" {
   value = module.eks_ebs_csi.ebs_csi_driver_role_arn
 }
 
+output "alb_controller_policy_arn" {
+  value = module.eks_alb_controller.alb_controller_policy_arn
+}
+
+output "alb_controller_role_arn" {
+  value = module.eks_alb_controller.alb_controller_role_arn
+}
+
 output "db_security_group_id" {
   value = module.rds.db_security_group_id
 }
