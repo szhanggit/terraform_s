@@ -394,11 +394,11 @@ locals {
 }
 
 # Equivalent of:
-# eksctl create nodegroup --cluster=eksdemo1 --region=ca-central-1 --name=eksdemo1-ng-public1
+# eksctl create nodegroup --cluster=eksdemo1 --region=ca-central-1 --name=eksdemo1-ng-private1
 #   --node-type=t3.small --nodes=2 --nodes-min=2 --nodes-max=4 --node-volume-size=20
-#   --ssh-access --ssh-public-key=kube-demo --managed
+#   --node-private-networking --ssh-access --ssh-public-key=kube-demo --managed
 #   --asg-access --external-dns-access --full-ecr-access --appmesh-access --alb-ingress-access
-resource "aws_eks_node_group" "public1" {
+resource "aws_eks_node_group" "private1" {
   cluster_name    = var.cluster_name
   node_group_name = var.nodegroup_name
   node_role_arn   = aws_iam_role.nodegroup.arn

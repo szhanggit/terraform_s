@@ -43,7 +43,7 @@ variable "private_subnet_cidrs" {
 variable "nodegroup_name" {
   description = "Name of the EKS managed node group"
   type        = string
-  default     = "eksdemo1-ng-public1"
+  default     = "eksdemo1-ng-private1"
 }
 
 variable "node_instance_type" {

@@ -119,7 +119,7 @@ module "eks_nodegroup" {
   node_max_size       = var.node_max_size
   node_volume_size    = var.node_volume_size
   ssh_public_key_name = var.ssh_public_key_name
-  subnet_ids          = module.vpc.public_subnet_ids
+  subnet_ids          = module.vpc.private_subnet_ids
 
   depends_on = [module.eks_cluster]
 }
