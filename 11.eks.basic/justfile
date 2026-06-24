@@ -1,0 +1,25 @@
+set shell := ["bash", "-uc"]
+
+# Must match var.cluster_name / var.region defaults in variables.tf
+cluster_name := "eksdemo1"
+region := "ca-central-1"
+
+install:
+    terraform init
+    terraform validate
+    terraform plan
+    terraform apply -auto-approve
+    aws eks --region {{region}} update-kubeconfig --name {{cluster_name}}
+    helm repo add eks https://aws.github.io/eks-charts
+    helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+        -n kube-system \
+        --set clusterName={{cluster_name}} \
+        --set serviceAccount.create=false \
+        --set serviceAccount.name=aws-load-balancer-controller \
+        --set region={{region}} \
+        --set vpcId="$(terraform output -raw vpc_id)" \
+        --set image.repository=public.ecr.aws/eks/aws-load-balancer-controller
+
+destroy:
+    helm uninstall aws-load-balancer-controller -n kube-system
+    terraform destroy -auto-approve
