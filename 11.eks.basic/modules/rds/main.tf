@@ -47,5 +47,9 @@ resource "aws_db_instance" "usermgmtdb" {
   publicly_accessible    = var.db_publicly_accessible
   multi_az               = false
 
+  # Disabled so a destroy never has to wait behind a backup in progress -
+  # this is a disposable study environment, not something needing PITR.
+  backup_retention_period = 0
+
   skip_final_snapshot = true
 }

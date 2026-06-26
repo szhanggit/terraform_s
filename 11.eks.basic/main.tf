@@ -144,6 +144,16 @@ module "eks_alb_controller" {
   depends_on = [module.eks_nodegroup]
 }
 
+module "eks_external_dns" {
+  source = "./modules/eks-external-dns"
+
+  cluster_name      = var.cluster_name
+  oidc_provider_arn = module.eks_cluster.oidc_provider_arn
+  oidc_provider_url = module.eks_cluster.oidc_provider_url
+
+  depends_on = [module.eks_nodegroup]
+}
+
 module "rds" {
   source = "./modules/rds"
 

@@ -58,6 +58,14 @@ output "alb_controller_policy_arn" {
   value = module.eks_alb_controller.alb_controller_policy_arn
 }
 
+output "external_dns_policy_arn" {
+  value = module.eks_external_dns.external_dns_policy_arn
+}
+
+output "external_dns_role_arn" {
+  value = module.eks_external_dns.external_dns_role_arn
+}
+
 output "alb_controller_role_arn" {
   value = module.eks_alb_controller.alb_controller_role_arn
 }
