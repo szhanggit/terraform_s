@@ -17,3 +17,9 @@ variable "subnet_ids" {
   description = "Private subnet IDs where Fargate pods are launched"
   type        = list(string)
 }
+
+variable "labels" {
+  description = "Optional Kubernetes label selectors for the Fargate profile selector"
+  type        = map(string)
+  default     = {}
+}

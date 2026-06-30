@@ -165,6 +165,29 @@ module "eks_fargate_profile" {
   depends_on = [module.eks_cluster]
 }
 
+module "eks_fargate_profile_app2" {
+  source = "./modules/eks-fargate-profile"
+
+  cluster_name         = var.cluster_name
+  fargate_profile_name = "fp-app2"
+  namespace            = "ns-app2"
+  subnet_ids           = module.vpc.private_subnet_ids
+
+  depends_on = [module.eks_cluster]
+}
+
+module "eks_fargate_profile_ums" {
+  source = "./modules/eks-fargate-profile"
+
+  cluster_name         = var.cluster_name
+  fargate_profile_name = "fp-ums"
+  namespace            = "ns-ums"
+  labels               = { runon = "fargate" }
+  subnet_ids           = module.vpc.private_subnet_ids
+
+  depends_on = [module.eks_cluster]
+}
+
 module "rds" {
   source = "./modules/rds"
 

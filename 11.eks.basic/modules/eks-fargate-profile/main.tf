@@ -25,6 +25,7 @@ resource "aws_eks_fargate_profile" "main" {
 
   selector {
     namespace = var.namespace
+    labels    = length(var.labels) > 0 ? var.labels : null
   }
 
   depends_on = [aws_iam_role_policy_attachment.fargate_pod_execution]
