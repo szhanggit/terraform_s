@@ -154,6 +154,17 @@ module "eks_external_dns" {
   depends_on = [module.eks_nodegroup]
 }
 
+module "eks_fargate_profile" {
+  source = "./modules/eks-fargate-profile"
+
+  cluster_name         = var.cluster_name
+  fargate_profile_name = var.fargate_profile_name
+  namespace            = var.fargate_namespace
+  subnet_ids           = module.vpc.private_subnet_ids
+
+  depends_on = [module.eks_cluster]
+}
+
 module "rds" {
   source = "./modules/rds"
 

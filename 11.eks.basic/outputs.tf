@@ -70,6 +70,18 @@ output "alb_controller_role_arn" {
   value = module.eks_alb_controller.alb_controller_role_arn
 }
 
+output "fargate_profile_arn" {
+  value = module.eks_fargate_profile.fargate_profile_arn
+}
+
+output "fargate_profile_status" {
+  value = module.eks_fargate_profile.fargate_profile_status
+}
+
+output "fargate_pod_execution_role_arn" {
+  value = module.eks_fargate_profile.pod_execution_role_arn
+}
+
 output "db_security_group_id" {
   value = module.rds.db_security_group_id
 }

@@ -135,3 +135,15 @@ variable "db_publicly_accessible" {
   type        = bool
   default     = true
 }
+
+variable "fargate_profile_name" {
+  description = "Name of the EKS Fargate profile"
+  type        = string
+  default     = "fp-demo"
+}
+
+variable "fargate_namespace" {
+  description = "Kubernetes namespace selector for the Fargate profile"
+  type        = string
+  default     = "fp-dev"
+}
