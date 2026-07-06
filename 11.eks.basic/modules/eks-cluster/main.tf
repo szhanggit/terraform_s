@@ -27,7 +27,29 @@ resource "aws_eks_cluster" "main" {
     subnet_ids = var.public_subnet_ids
   }
 
+  access_config {
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
+
   depends_on = [aws_iam_role_policy_attachment.cluster_policy]
+}
+
+# Grants the CodePipeline deploy stage's assumed role cluster-admin access via
+# EKS access entries (replaces manually editing the aws-auth ConfigMap).
+resource "aws_eks_access_entry" "codebuild_kubectl" {
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = var.codebuild_kubectl_role_arn
+}
+
+resource "aws_eks_access_policy_association" "codebuild_kubectl_admin" {
+  cluster_name  = aws_eks_cluster.main.name
+  principal_arn = aws_eks_access_entry.codebuild_kubectl.principal_arn
+  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
 }
 
 # Equivalent of:

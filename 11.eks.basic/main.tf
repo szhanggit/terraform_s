@@ -21,6 +21,8 @@ provider "aws" {
   region = var.region
 }
 
+data "aws_caller_identity" "current" {}
+
 provider "kubernetes" {
   host                   = module.eks_cluster.cluster_endpoint
   cluster_ca_certificate = base64decode(module.eks_cluster.cluster_certificate_authority_data)
@@ -45,9 +47,10 @@ module "vpc" {
 module "eks_cluster" {
   source = "./modules/eks-cluster"
 
-  cluster_name       = var.cluster_name
-  kubernetes_version = var.kubernetes_version
-  public_subnet_ids  = module.vpc.public_subnet_ids
+  cluster_name               = var.cluster_name
+  kubernetes_version         = var.kubernetes_version
+  public_subnet_ids          = module.vpc.public_subnet_ids
+  codebuild_kubectl_role_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.codebuild_kubectl_role_name}"
 
   depends_on = [module.vpc]
 }
@@ -146,6 +149,16 @@ module "eks_alb_controller" {
 
 module "eks_external_dns" {
   source = "./modules/eks-external-dns"
+
+  cluster_name      = var.cluster_name
+  oidc_provider_arn = module.eks_cluster.oidc_provider_arn
+  oidc_provider_url = module.eks_cluster.oidc_provider_url
+
+  depends_on = [module.eks_nodegroup]
+}
+
+module "eks_xray" {
+  source = "./modules/eks-xray"
 
   cluster_name      = var.cluster_name
   oidc_provider_arn = module.eks_cluster.oidc_provider_arn

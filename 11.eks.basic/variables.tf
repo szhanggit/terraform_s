@@ -22,6 +22,12 @@ variable "kubernetes_version" {
   default     = "1.31"
 }
 
+variable "codebuild_kubectl_role_name" {
+  description = "Name of the IAM role the CodePipeline deploy stage assumes to run kubectl; granted cluster-admin via an EKS access entry"
+  type        = string
+  default     = "EksCodeBuildKubectlRole"
+}
+
 variable "vpc_cidr_block" {
   description = "CIDR block for the EKS VPC"
   type        = string

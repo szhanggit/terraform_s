@@ -70,6 +70,10 @@ output "alb_controller_role_arn" {
   value = module.eks_alb_controller.alb_controller_role_arn
 }
 
+output "xray_daemon_role_arn" {
+  value = module.eks_xray.xray_daemon_role_arn
+}
+
 output "fargate_profile_arn" {
   value = module.eks_fargate_profile.fargate_profile_arn
 }
