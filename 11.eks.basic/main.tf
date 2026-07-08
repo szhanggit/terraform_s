@@ -177,6 +177,14 @@ module "eks_cluster_autoscaler" {
   depends_on = [module.eks_nodegroup]
 }
 
+module "eks_container_insights" {
+  source = "./modules/eks-container-insights"
+
+  cluster_name = var.cluster_name
+
+  depends_on = [module.eks_nodegroup]
+}
+
 module "eks_fargate_profile" {
   source = "./modules/eks-fargate-profile"
 
